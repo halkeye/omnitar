@@ -1,0 +1,32 @@
+spec:
+  name: internal-profile-http
+  region: tor1
+  databases:
+  - engine: PG
+    name: db
+    version: "17"
+  ingress:
+    rules:
+    - component:
+        name: internal-profile-http
+      match:
+        path:
+          prefix: /
+  services:
+    - name: internal-profile-http
+      git:
+        branch: main
+        repo_clone_url: https://github.com/halkeye/internal-profile-http
+      dockerfile_path: /Dockerfile
+      source_dir: /
+      envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        value: ${db.DATABASE_URL}
+      http_port: 8080
+      health_check:
+        http_path: /
+      instance_count: 1
+      instance_size_slug: apps-s-1vcpu-0.5gb
+      routes:
+        - path: /
