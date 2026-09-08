@@ -1,7 +1,7 @@
 // <omnitar-card> web component
 //
 // Usage:
-//   <script type="module" src="https://omnivar.apps.g4v.dev/slack/E0AFSMB25HU/webcomponent.js"></script>
+//   <script type="module" src="https://omnitar.apps.g4v.dev/slack/E0AFSMB25HU/webcomponent.js"></script>
 //   <omnitar-card email="slack@gavinmogan.com">Gavin Mogan</omnitar-card>
 //
 // Wraps its content; on hover/focus it shows a small card with the

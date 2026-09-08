@@ -47,7 +47,7 @@ self-describing about which Slack org they came from:
 ## Web component
 
 ```html
-<script type="module" src="https://omnivar.apps.g4v.dev/slack/E0AFSMB25HU/webcomponent.js"></script>
+<script type="module" src="https://omnitar.apps.g4v.dev/slack/E0AFSMB25HU/webcomponent.js"></script>
 <omnitar-card email="slack@gavinmogan.com">username or other display if nothing is found</omnitar-card>
 ```
 
@@ -57,7 +57,7 @@ No build step — plain JS, Shadow DOM for style isolation.
 
 ### Demo
 
-http://omnivar.apps.g4v.dev/ (Assuming my slack dev sandbox is still running)
+http://omnitar.apps.g4v.dev/ (Assuming my slack dev sandbox is still running)
 
 ## Development
 
