@@ -115,7 +115,7 @@ class SlackProfileElement extends HTMLElement {
         .classList.add("hide");
       const displayName = this.shadowRoot.querySelector(".display-name span")!;
       displayName.classList.remove("hide");
-      displayName.textContent = e.detail.name;
+      displayName.textContent = "🪪 " + e.detail.name.toString();
 
       this.shadowRoot.querySelector(".name")!.textContent =
         this._profile?.name ?? "";
