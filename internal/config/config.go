@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -13,8 +14,10 @@ import (
 
 	"github.com/caarlos0/env/v11"
 	"github.com/sirupsen/logrus"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // config holds all runtime configuration for the service.
@@ -38,10 +41,35 @@ type config struct {
 	refreshCancels map[string]context.CancelFunc
 }
 
+func (c *config) SetupDB(ctx context.Context, dialector gorm.Dialector) error {
+	c.logger.Debug("connecting to database")
+	db, err := gorm.Open(dialector, &gorm.Config{})
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	c.db = db
+
+	// Migrate the schema
+	db.AutoMigrate(&SourceConnection{})
+
+	sourceConnections, err := gorm.G[SourceConnection](db).Find(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch source connections from database: %w", err)
+	}
+	for _, sourceConnection := range sourceConnections {
+		if sourceConnection.Type == "slack" {
+			if err := c.AddSource(sourceConnection.TeamID, directory.NewSlackSource(c.logger, sourceConnection.TeamID, sourceConnection.Token)); err != nil {
+				return fmt.Errorf("failed to start refresher for Slack source %s: %w", sourceConnection.TeamID, err)
+			}
+		}
+	}
+	return nil
+}
+
 type SourceConnection struct {
 	gorm.Model
-	Type   string
-	TeamID string
+	Type   string `gorm:"uniqueIndex:idx_source_connections_type_team_id"`
+	TeamID string `gorm:"uniqueIndex:idx_source_connections_type_team_id"`
 	Token  string
 }
 
@@ -78,29 +106,12 @@ func Load() (*config, error) {
 	}
 
 	if cfg.DatabaseURL != "" {
-		cfg.logger.Debug("connecting to database")
-		db, err := gorm.Open(postgres.New(postgres.Config{
+		dialector := postgres.Config{
 			DSN:                  cfg.DatabaseURL,
 			PreferSimpleProtocol: true, // disables implicit prepared statement usage
-		}), &gorm.Config{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to connect to database: %w", err)
 		}
-		cfg.db = db
-
-		// Migrate the schema
-		db.AutoMigrate(&SourceConnection{})
-
-		sourceConnections, err := gorm.G[SourceConnection](db).Find(context.Background())
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch source connections from database: %w", err)
-		}
-		for _, sourceConnection := range sourceConnections {
-			if sourceConnection.Type == "slack" {
-				if err := cfg.AddSource(sourceConnection.TeamID, directory.NewSlackSource(cfg.logger, sourceConnection.TeamID, sourceConnection.Token)); err != nil {
-					return nil, fmt.Errorf("failed to start refresher for Slack source %s: %w", sourceConnection.TeamID, err)
-				}
-			}
+		if err := cfg.SetupDB(context.Background(), postgres.New(dialector)); err != nil {
+			return nil, fmt.Errorf("failed to setup database: %w", err)
 		}
 	}
 
@@ -110,6 +121,8 @@ func Load() (*config, error) {
 var _ Config = &config{}
 
 type Config interface {
+	io.Closer
+
 	IsDev() bool
 
 	Logger() *logrus.Logger
@@ -145,10 +158,41 @@ func (c *config) Source(sourceID string) directory.Source {
 	return c.sources[sourceID]
 }
 
+// Close stops any running refreshers and closes the database connection, if
+// one was opened via SetupDB.
+func (c *config) Close() error {
+	c.mu.Lock()
+	for sourceID, cancel := range c.refreshCancels {
+		cancel()
+		delete(c.refreshCancels, sourceID)
+	}
+	c.mu.Unlock()
+
+	if c.db == nil {
+		return nil
+	}
+
+	sqlDB, err := c.db.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get underlying database connection: %w", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		return fmt.Errorf("failed to close database connection: %w", err)
+	}
+	return nil
+}
+
 func (c *config) SaveSourceConnection(ctx context.Context, sourceType string, sourceID string, token string) error {
 	conn := &SourceConnection{Type: sourceType, TeamID: sourceID, Token: token}
 	if c.db != nil {
-		err := gorm.G[SourceConnection](c.db).Create(ctx, conn)
+		// Re-authorizing an already-connected team hits the same
+		// (type, team_id), so upsert the token instead of erroring on the
+		// unique index.
+		onConflict := clause.OnConflict{
+			Columns:   []clause.Column{{Name: "type"}, {Name: "team_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"token"}),
+		}
+		err := gorm.G[SourceConnection](c.db, onConflict).Create(ctx, conn)
 		if err != nil {
 			return fmt.Errorf("failed to save source connection: %w", err)
 		}

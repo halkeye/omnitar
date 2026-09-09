@@ -2,10 +2,13 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"gorm.io/driver/sqlite"
 
 	"github.com/sirupsen/logrus/hooks/test"
 
@@ -26,6 +29,12 @@ func (s testSource) Lookup(_ context.Context, id string) (directory.Person, erro
 	return s.people[id], nil
 }
 
+// notFoundStaticHandler stands in for the real webcomponent asset handler in
+// tests that don't exercise it, so NoRoute doesn't panic on a nil handler.
+var notFoundStaticHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
+})
+
 func newTestRouter(t *testing.T) http.Handler {
 	t.Helper()
 	people := []directory.Person{
@@ -38,13 +47,148 @@ func newTestRouter(t *testing.T) http.Handler {
 		source.people[directory.SHA256Hash(person.Email)] = person
 	}
 	cfg := config.New()
-	cfg.AddSource(testOrgID, source)
+	if err := cfg.SetupDB(t.Context(), sqlite.Open("file::memory:?cache=shared")); err != nil {
+		t.Fatalf("SetupDB() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := cfg.Close(); err != nil {
+			t.Errorf("cfg.Close() error = %v", err)
+		}
+	})
+	if err := cfg.AddSource(testOrgID, source); err != nil {
+		t.Fatalf("AddSource() error = %v", err)
+	}
 	logger, _ := test.NewNullLogger()
 	return NewRouter(&Deps{
 		Logger:        logger,
 		Config:        cfg,
 		DefaultAvatar: []byte("<svg>default</svg>"),
+		StaticHandler: notFoundStaticHandler,
 	})
+}
+
+// newSlackAuthTestRouter builds a router with Slack OAuth credentials
+// configured, so /slack/auth is registered. apiURL, when non-empty,
+// overrides the Slack API base URL the OAuth exchange hits. It also returns
+// the underlying config, so tests can inspect the sources it registers.
+func newSlackAuthTestRouter(t *testing.T, apiURL string) (http.Handler, config.Config) {
+	t.Helper()
+	cfg := config.New()
+	cfg.SlackClientID_ = "test-client-id"
+	cfg.SlackClientSecret_ = "test-client-secret"
+	if err := cfg.SetupDB(t.Context(), sqlite.Open("file::memory:?cache=shared")); err != nil {
+		t.Fatalf("SetupDB() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := cfg.Close(); err != nil {
+			t.Errorf("cfg.Close() error = %v", err)
+		}
+	})
+	logger, _ := test.NewNullLogger()
+	router := NewRouter(&Deps{
+		Logger:        logger,
+		Config:        cfg,
+		SlackAPIURL:   apiURL,
+		StaticHandler: notFoundStaticHandler,
+	})
+	return router, cfg
+}
+
+func TestSlackAuthNotRegisteredWithoutCredentials(t *testing.T) {
+	router := newTestRouter(t)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slack/auth", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestSlackAuthErrorParam(t *testing.T) {
+	router, _ := newSlackAuthTestRouter(t, "")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slack/auth?error=access_denied", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got, want := rec.Body.String(), "error installing app"; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+}
+
+func TestSlackAuthMissingCode(t *testing.T) {
+	router, _ := newSlackAuthTestRouter(t, "")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slack/auth", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(rec.Body.String(), "code") {
+		t.Errorf("body = %q, want it to mention the missing 'code' param", rec.Body.String())
+	}
+}
+
+func TestSlackAuthExchangeFailure(t *testing.T) {
+	slackAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"ok":false,"error":"invalid_code"}`)
+	}))
+	defer slackAPI.Close()
+
+	router, _ := newSlackAuthTestRouter(t, slackAPI.URL+"/")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slack/auth?code=badcode", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+}
+
+func TestSlackAuthSuccess(t *testing.T) {
+	slackAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"ok":true,"access_token":"xoxb-test","team":{"id":"T0INSTALL","name":"Test Team"}}`)
+	}))
+	defer slackAPI.Close()
+
+	router, _ := newSlackAuthTestRouter(t, slackAPI.URL+"/")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slack/auth?code=goodcode", nil))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusFound, rec.Body.String())
+	}
+	if got, want := rec.Header().Get("Location"), "/"; got != want {
+		t.Errorf("Location = %q, want %q", got, want)
+	}
+}
+
+// TestSlackAuthSameTeamTwice simulates a team re-installing (or
+// re-authorizing) the app: the OAuth callback fires twice for the same
+// team ID. The second AddSource call must replace the first source/
+// refresher rather than erroring out or leaking the old one.
+func TestSlackAuthSameTeamTwice(t *testing.T) {
+	const teamID = "T0INSTALL"
+	tokens := []string{"xoxb-first", "xoxb-second"}
+	var requestCount int
+	slackAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		token := tokens[requestCount]
+		requestCount++
+		fmt.Fprintf(w, `{"ok":true,"access_token":%q,"team":{"id":%q,"name":"Test Team"}}`, token, teamID)
+	}))
+	defer slackAPI.Close()
+
+	router, cfg := newSlackAuthTestRouter(t, slackAPI.URL+"/")
+
+	for i, code := range []string{"code1", "code2"} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/slack/auth?code="+code, nil))
+		if rec.Code != http.StatusFound {
+			t.Fatalf("auth #%d: status = %d, want %d, body=%s", i+1, rec.Code, http.StatusFound, rec.Body.String())
+		}
+	}
+
+	if requestCount != 2 {
+		t.Fatalf("Slack API calls = %d, want 2", requestCount)
+	}
+	if source := cfg.Source(teamID); source == nil {
+		t.Fatalf("Source(%q) = nil, want the replaced source to still be registered", teamID)
+	}
 }
 
 func TestHealthz(t *testing.T) {

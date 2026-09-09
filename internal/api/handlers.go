@@ -88,7 +88,11 @@ func slackInstallHandler(d *Deps) func(c *gin.Context) {
 			return
 		}
 
-		resp, err := slack.GetOAuthV2Response(http.DefaultClient, d.Config.SlackClientID(), d.Config.SlackClientSecret(), code, "")
+		var opts []slack.OAuthOption
+		if d.SlackAPIURL != "" {
+			opts = append(opts, slack.OAuthOptionAPIURL(d.SlackAPIURL))
+		}
+		resp, err := slack.GetOAuthV2Response(http.DefaultClient, d.Config.SlackClientID(), d.Config.SlackClientSecret(), code, "", opts...)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "error exchanging temporary code for access token: %s", err.Error())
 			return

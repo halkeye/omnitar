@@ -22,6 +22,10 @@ type Deps struct {
 	DefaultAvatar []byte
 	StaticHandler http.Handler
 	Config        config.Config
+	// SlackAPIURL overrides the Slack API base URL used for the OAuth
+	// token exchange. Empty means the real Slack API. Tests point this at
+	// an httptest.Server.
+	SlackAPIURL string
 }
 
 func webcomponentHandler(handler http.Handler) gin.HandlerFunc {
