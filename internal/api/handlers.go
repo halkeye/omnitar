@@ -100,12 +100,10 @@ func slackInstallHandler(d *Deps) func(c *gin.Context) {
 			return
 		}
 
-		d.Config.AddSource(resp.Team.ID, directory.NewSlackSource(d.Logger, resp.Team.ID, resp.AccessToken))
-		if err != nil {
-			c.String(http.StatusInternalServerError, "error storing slack access token: %s", err.Error())
+		if err := d.Config.AddSource(resp.Team.ID, directory.NewSlackSource(d.Logger, resp.Team.ID, resp.AccessToken)); err != nil {
+			c.String(http.StatusInternalServerError, "error starting refresher for slack source: %s", err.Error())
 			return
 		}
-		d.Config.StartRefresher(resp.Team.ID)
 
 		c.Redirect(http.StatusFound, "/")
 	}

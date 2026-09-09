@@ -33,8 +33,9 @@ type config struct {
 
 	logger *logrus.Logger
 
-	mu      sync.RWMutex
-	sources map[string]directory.Source
+	mu             sync.RWMutex
+	sources        map[string]directory.Source
+	refreshCancels map[string]context.CancelFunc
 }
 
 type SourceConnection struct {
@@ -64,12 +65,11 @@ func Load() (*config, error) {
 
 	cfg.logger = logger
 	cfg.sources = map[string]directory.Source{}
+	cfg.refreshCancels = map[string]context.CancelFunc{}
 
 	for slackOrgID, token := range cfg.SlackBotTokens {
 		logger.WithField("slackOrgID", slackOrgID).Info("adding Slack source")
-		cfg.AddSource(slackOrgID, directory.NewSlackSource(logger, slackOrgID, token))
-		err := cfg.StartRefresher(slackOrgID)
-		if err != nil {
+		if err := cfg.AddSource(slackOrgID, directory.NewSlackSource(logger, slackOrgID, token)); err != nil {
 			return nil, fmt.Errorf("failed to start refresher for Slack source %s: %w", slackOrgID, err)
 		}
 	}
@@ -94,9 +94,7 @@ func Load() (*config, error) {
 		}
 		for _, sourceConnection := range sourceConnections {
 			if sourceConnection.Type == "slack" {
-				cfg.AddSource(sourceConnection.TeamID, directory.NewSlackSource(logger, sourceConnection.TeamID, sourceConnection.Token))
-				err := cfg.StartRefresher(sourceConnection.TeamID)
-				if err != nil {
+				if err := cfg.AddSource(sourceConnection.TeamID, directory.NewSlackSource(logger, sourceConnection.TeamID, sourceConnection.Token)); err != nil {
 					return nil, fmt.Errorf("failed to start refresher for Slack source %s: %w", sourceConnection.TeamID, err)
 				}
 			}
@@ -117,7 +115,7 @@ type Config interface {
 	SlackClientSecret() string
 
 	Source(sourceID string) directory.Source
-	AddSource(sourceID string, source directory.Source)
+	AddSource(sourceID string, source directory.Source) error
 	StartRefresher(sourceID string) error
 	SaveSourceConnection(ctx context.Context, sourceType string, sourceID string, token string) error
 }
@@ -155,27 +153,40 @@ func (c *config) SaveSourceConnection(ctx context.Context, sourceType string, so
 	return nil
 }
 
-func (c *config) AddSource(sourceID string, source directory.Source) {
+func (c *config) AddSource(sourceID string, source directory.Source) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	if cancel, ok := c.refreshCancels[sourceID]; ok {
+		cancel()
+		delete(c.refreshCancels, sourceID)
+	}
 	c.sources[sourceID] = source
+	c.mu.Unlock()
+
+	return c.StartRefresher(sourceID)
 }
 
 func (c *config) StartRefresher(sourceID string) error {
-	var err error
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	c.logger.WithField("sourceID", sourceID).Info("starting refresher for source")
 
 	source := c.Source(sourceID)
 	if source == nil {
+		cancel()
 		return fmt.Errorf("source %s not found", sourceID)
 	}
+
+	c.mu.Lock()
+	if oldCancel, ok := c.refreshCancels[sourceID]; ok {
+		oldCancel()
+	}
+	c.refreshCancels[sourceID] = cancel
+	c.mu.Unlock()
 
 	refresher := &refresh.Refresher{Source: source, Interval: c.RefreshInterval, Logger: c.logger}
 	go func() {
 		startupCtx, cancelStartup := context.WithTimeout(ctx, c.StartupTimeout)
-		err = initialLoad(startupCtx, source, refresher, c.logger)
+		err := initialLoad(startupCtx, source, refresher, c.logger)
 		cancelStartup()
 
 		if err != nil {
