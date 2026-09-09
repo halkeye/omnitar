@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sirupsen/logrus/hooks/test"
+
+	"github.com/halkeye/omnitar/internal/config"
 	"github.com/halkeye/omnitar/internal/directory"
 )
 
@@ -34,8 +37,12 @@ func newTestRouter(t *testing.T) http.Handler {
 		source.people[directory.MD5Hash(person.Email)] = person
 		source.people[directory.SHA256Hash(person.Email)] = person
 	}
+	cfg := config.New()
+	cfg.AddSource(testOrgID, source)
+	logger, _ := test.NewNullLogger()
 	return NewRouter(&Deps{
-		Sources:       map[string]directory.Source{testOrgID: source},
+		Logger:        logger,
+		Config:        cfg,
 		DefaultAvatar: []byte("<svg>default</svg>"),
 	})
 }

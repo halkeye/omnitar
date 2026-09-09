@@ -45,37 +45,40 @@ type SourceConnection struct {
 	Token  string
 }
 
-// Load reads config from the environment, applying defaults for anything
-// unset and validating required fields.
-func Load() (*config, error) {
+func New() *config {
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
 
-	cfg, err := env.ParseAs[config]()
+	cfg := &config{}
 	cfg.logger = logger
+	cfg.sources = map[string]directory.Source{}
+	cfg.refreshCancels = map[string]context.CancelFunc{}
+
+	return cfg
+}
+
+func Load() (*config, error) {
+	cfg := New()
+	err := env.Parse(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
 	if level, err := logrus.ParseLevel(cfg.LogLevel); err != nil {
-		logger.WithError(err).Warn("invalid LOG_LEVEL, defaulting to info")
+		cfg.logger.WithError(err).Warn("invalid LOG_LEVEL, defaulting to info")
 	} else {
-		logger.SetLevel(level)
+		cfg.logger.SetLevel(level)
 	}
 
-	cfg.logger = logger
-	cfg.sources = map[string]directory.Source{}
-	cfg.refreshCancels = map[string]context.CancelFunc{}
-
 	for slackOrgID, token := range cfg.SlackBotTokens {
-		logger.WithField("slackOrgID", slackOrgID).Info("adding Slack source")
-		if err := cfg.AddSource(slackOrgID, directory.NewSlackSource(logger, slackOrgID, token)); err != nil {
+		cfg.logger.WithField("slackOrgID", slackOrgID).Info("adding Slack source")
+		if err := cfg.AddSource(slackOrgID, directory.NewSlackSource(cfg.logger, slackOrgID, token)); err != nil {
 			return nil, fmt.Errorf("failed to start refresher for Slack source %s: %w", slackOrgID, err)
 		}
 	}
 
 	if cfg.DatabaseURL != "" {
-		logger.Debug("connecting to database")
+		cfg.logger.Debug("connecting to database")
 		db, err := gorm.Open(postgres.New(postgres.Config{
 			DSN:                  cfg.DatabaseURL,
 			PreferSimpleProtocol: true, // disables implicit prepared statement usage
@@ -94,14 +97,14 @@ func Load() (*config, error) {
 		}
 		for _, sourceConnection := range sourceConnections {
 			if sourceConnection.Type == "slack" {
-				if err := cfg.AddSource(sourceConnection.TeamID, directory.NewSlackSource(logger, sourceConnection.TeamID, sourceConnection.Token)); err != nil {
+				if err := cfg.AddSource(sourceConnection.TeamID, directory.NewSlackSource(cfg.logger, sourceConnection.TeamID, sourceConnection.Token)); err != nil {
 					return nil, fmt.Errorf("failed to start refresher for Slack source %s: %w", sourceConnection.TeamID, err)
 				}
 			}
 		}
 	}
 
-	return &cfg, nil
+	return cfg, nil
 }
 
 var _ Config = &config{}
@@ -183,21 +186,23 @@ func (c *config) StartRefresher(sourceID string) error {
 	c.refreshCancels[sourceID] = cancel
 	c.mu.Unlock()
 
-	refresher := &refresh.Refresher{Source: source, Interval: c.RefreshInterval, Logger: c.logger}
-	go func() {
-		startupCtx, cancelStartup := context.WithTimeout(ctx, c.StartupTimeout)
-		err := initialLoad(startupCtx, source, refresher, c.logger)
-		cancelStartup()
+	if c.RefreshInterval > 0 {
+		refresher := &refresh.Refresher{Source: source, Interval: c.RefreshInterval, Logger: c.logger}
+		go func() {
+			startupCtx, cancelStartup := context.WithTimeout(ctx, c.StartupTimeout)
+			err := initialLoad(startupCtx, source, refresher, c.logger)
+			cancelStartup()
 
-		if err != nil {
-			c.logger.WithError(err).Fatal("initial directory load from Slack failed, giving up")
-		}
+			if err != nil {
+				c.logger.WithError(err).Fatal("initial directory load from Slack failed, giving up")
+			}
 
-		c.logger.WithFields(logrus.Fields{"people": source.Len()}).Info("initial directory load complete")
-		if err := refresher.RunPeriodic(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			c.logger.WithError(err).Error("refresh loop exited unexpectedly")
-		}
-	}()
+			c.logger.WithFields(logrus.Fields{"people": source.Len()}).Info("initial directory load complete")
+			if err := refresher.RunPeriodic(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				c.logger.WithError(err).Error("refresh loop exited unexpectedly")
+			}
+		}()
+	}
 
 	return nil
 }
