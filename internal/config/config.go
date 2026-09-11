@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/halkeye/omnitar/internal/directory"
+	"github.com/halkeye/omnitar/internal/models"
 	"github.com/halkeye/omnitar/internal/refresh"
 
 	"github.com/caarlos0/env/v11"
@@ -50,9 +51,9 @@ func (c *config) SetupDB(ctx context.Context, dialector gorm.Dialector) error {
 	c.db = db
 
 	// Migrate the schema
-	db.AutoMigrate(&SourceConnection{})
+	db.AutoMigrate(&models.SourceConnection{})
 
-	sourceConnections, err := gorm.G[SourceConnection](db).Find(ctx)
+	sourceConnections, err := gorm.G[models.SourceConnection](db).Find(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch source connections from database: %w", err)
 	}
@@ -64,13 +65,6 @@ func (c *config) SetupDB(ctx context.Context, dialector gorm.Dialector) error {
 		}
 	}
 	return nil
-}
-
-type SourceConnection struct {
-	gorm.Model
-	Type   string `gorm:"uniqueIndex:idx_source_connections_type_team_id"`
-	TeamID string `gorm:"uniqueIndex:idx_source_connections_type_team_id"`
-	Token  string
 }
 
 func New() *config {
@@ -183,7 +177,7 @@ func (c *config) Close() error {
 }
 
 func (c *config) SaveSourceConnection(ctx context.Context, sourceType string, sourceID string, token string) error {
-	conn := &SourceConnection{Type: sourceType, TeamID: sourceID, Token: token}
+	conn := &models.SourceConnection{Type: sourceType, TeamID: sourceID, Token: token}
 	if c.db != nil {
 		// Re-authorizing an already-connected team hits the same
 		// (type, team_id), so upsert the token instead of erroring on the
@@ -192,7 +186,7 @@ func (c *config) SaveSourceConnection(ctx context.Context, sourceType string, so
 			Columns:   []clause.Column{{Name: "type"}, {Name: "team_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{"token"}),
 		}
-		err := gorm.G[SourceConnection](c.db, onConflict).Create(ctx, conn)
+		err := gorm.G[models.SourceConnection](c.db, onConflict).Create(ctx, conn)
 		if err != nil {
 			return fmt.Errorf("failed to save source connection: %w", err)
 		}
