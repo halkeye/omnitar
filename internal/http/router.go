@@ -6,7 +6,6 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -18,10 +17,9 @@ import (
 
 	"github.com/gin-contrib/location/v2"
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
+	gormsessions "github.com/gin-contrib/sessions/gorm"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/patrickmn/go-cache"
 	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 
@@ -44,11 +42,6 @@ type Deps struct {
 	// an httptest.Server.
 	SlackAPIURL string
 }
-
-var (
-	// Cache for storing state
-	stateCache = cache.New(10*time.Minute, 20*time.Minute)
-)
 
 func webcomponentHandler(handler http.Handler) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -180,16 +173,69 @@ func getAtlassianOauth(deps *Deps, c *gin.Context) *oauth2.Config {
 func NewRouter(deps *Deps) http.Handler {
 	configureGinLogging(deps.Logger)
 
+	store := gormsessions.NewStore(deps.Config.Database(), true, []byte(deps.Config.SessionKey()))
 	router := gin.New()
-	router.Use(gin.ErrorLogger(), location.Default(), requestLogger(deps.Logger), recovery(deps.Logger), noTransform())
+	//   sub, _ := fs.Sub(tmplFS, "templates")
+	// r.LoadHTMLFS(http.FS(sub), "**/*.tmpl")
+	router.LoadHTMLGlob("templates/*.tmpl")
+	router.Use(
+		location.Default(),
+		sessions.Sessions("mysession", store),
+		gin.Recovery(),
+		gin.ErrorLogger(),
+		requestLogger(deps.Logger),
+		recovery(deps.Logger),
+		noTransform(),
+	)
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	router.GET("/healthz", healthzHandler)
 	router.GET("/features", featuresHandler(deps))
+	router.Static("/js", "./static/js")
+	router.Static("/css", "./static/css")
 
-	store := cookie.NewStore([]byte(deps.Config.SessionKey()))
-	router.Use(sessions.Sessions("mysession", store))
+	router.GET("/", func(c *gin.Context) {
+		session := sessions.Default(c)
+		baseURL := location.Get(c)
+		baseURL.Path = "/"
+
+		flashes := session.Flashes()
+		session.Save()
+
+		c.HTML(http.StatusOK, "index.tmpl", gin.H{"baseURL": baseURL, "Flashes": flashes})
+	})
+
+	router.GET("/auth", func(c *gin.Context) {
+		session := sessions.Default(c)
+		accountID := session.Get("account_id")
+		if accountID == nil {
+			deps.Logger.Debug("No account_id in session, redirecting to login")
+			session.AddFlash("You must log in to view this page.")
+			err := session.Save()
+			if err != nil {
+				deps.Logger.WithError(err).Error("Failed to save session")
+			}
+
+			c.Redirect(http.StatusFound, "/")
+			return
+		}
+
+		dbAccount, err := gorm.G[models.Account](deps.Config.Database()).
+			Preload("Tokens", nil).
+			Where(models.Account{ID: uuid.MustParse(accountID.(string))}).
+			First(c.Request.Context())
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to retrieve account: %w", err))
+			return
+		}
+
+		flashes := session.Flashes()
+		session.Save()
+
+		c.HTML(http.StatusOK, "auth.tmpl", gin.H{"Account": dbAccount, "Flashes": flashes})
+	})
 
 	router.GET("/auth/:provider", func(c *gin.Context) {
+		session := sessions.Default(c)
 		state, err := generateRandomState()
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Unable to generate state value")
@@ -202,7 +248,11 @@ func NewRouter(deps *Deps) http.Handler {
 			return
 		}
 
-		stateCache.Set(state, true, cache.DefaultExpiration)
+		session.Set("state_"+state, time.Now().Format(time.RFC3339))
+		err = session.Save()
+		if err != nil {
+			deps.Logger.WithError(err).Error("Failed to save session")
+		}
 
 		oauthConfig := providerFunc(deps, c)
 		authURL := oauthConfig.AuthCodeURL(state)
@@ -210,6 +260,8 @@ func NewRouter(deps *Deps) http.Handler {
 	})
 
 	router.GET("/auth/:provider/callback", func(c *gin.Context) {
+		session := sessions.Default(c)
+
 		providerFunc := providers[models.OAuthProvider(c.Param("provider"))]
 		if providerFunc == nil {
 			c.AbortWithError(http.StatusBadRequest, errors.New("unsupported provider"))
@@ -220,11 +272,16 @@ func NewRouter(deps *Deps) http.Handler {
 
 		// Retrieve and verify state
 		state := c.Query("state")
-		if _, exists := stateCache.Get(state); !exists {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid state value"})
+		deps.Logger.WithField("state", session.Get("state_"+state)).Debug("OAuth callback received")
+		if val, ok := session.Get("state_" + state).(string); !ok || val == "" {
+			c.AbortWithError(http.StatusBadRequest, errors.New("invalid state value"))
 			return
 		}
-		stateCache.Delete(state)
+		session.Delete("state_" + state)
+		err := session.Save()
+		if err != nil {
+			deps.Logger.WithError(err).Error("Failed to save session")
+		}
 
 		// Retrieve code
 		code := c.Query("code")
@@ -233,8 +290,9 @@ func NewRouter(deps *Deps) http.Handler {
 			return
 		}
 
-		rt := MyRoundTripper{logger: deps.Logger}
-		ctx := context.WithValue(c.Request.Context(), oauth2.HTTPClient, &http.Client{Transport: rt})
+		ctx := c.Request.Context()
+		// rt := MyRoundTripper{logger: deps.Logger}
+		// ctx := context.WithValue(c.Request.Context(), oauth2.HTTPClient, &http.Client{Transport: rt})
 		// Exchange code for access token
 		token, err := oauth2Config.Exchange(ctx, code)
 		if err != nil {
@@ -242,16 +300,22 @@ func NewRouter(deps *Deps) http.Handler {
 			return
 		}
 
+		accountUUID := ""
+		if val, ok := session.Get("account_id").(string); ok {
+			accountUUID = val
+		}
+
 		deps.Logger.WithField("team", token.Extra("team")).Debug("OAuth callback received")
-		var dbToken *models.Token
+		dbToken := models.Token{AccountToken: token.AccessToken, ExpiresAt: token.Expiry.Unix(), RefreshToken: token.RefreshToken}
 		switch models.OAuthProvider(c.Param("provider")) {
 		case models.Slack:
 			deps.Logger.Info("something")
 
-			teamID := token.Extra("team").(map[string]any)["id"].(string)
+			dbToken.Origin = "slack"
+			dbToken.OriginID = token.Extra("team").(map[string]any)["id"].(string)
 			// FIXME - check extra and all that is right
 
-			dbToken, err = deps.Config.FindOrCreateTokenAndAccount(ctx, models.Token{Origin: "slack", OriginID: teamID, AccountToken: token.AccessToken, ExpiresAt: token.Expiry.Unix(), RefreshToken: token.RefreshToken})
+			dbToken, err = deps.Config.FindOrCreateTokenAndAccount(ctx, accountUUID, dbToken)
 			if err != nil {
 				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to find or create slack token and account: %w", err))
 				return
@@ -287,7 +351,10 @@ func NewRouter(deps *Deps) http.Handler {
 			}
 
 			for _, ar := range resources {
-				dbToken, err = deps.Config.FindOrCreateTokenAndAccount(ctx, models.Token{Origin: "atlassian", OriginID: ar.URL, AccountToken: token.AccessToken, ExpiresAt: token.Expiry.Unix(), RefreshToken: token.RefreshToken})
+				dbToken := dbToken
+				dbToken.Origin = "atlassian"
+				dbToken.OriginID = ar.URL
+				dbToken, err = deps.Config.FindOrCreateTokenAndAccount(ctx, accountUUID, dbToken)
 				if err != nil {
 					c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to find or create atlassian token and account: %w", err))
 					return
@@ -295,7 +362,6 @@ func NewRouter(deps *Deps) http.Handler {
 			}
 		}
 
-		session := sessions.Default(c)
 		session.Set("account_id", dbToken.AccountUUID.String())
 		err = session.Save()
 		if err != nil {
@@ -304,32 +370,18 @@ func NewRouter(deps *Deps) http.Handler {
 		}
 
 		deps.Logger.WithField("account_id", dbToken.AccountUUID).Debug("Saved account ID in session")
-		c.Redirect(http.StatusTemporaryRedirect, "/auth/whoami")
+		c.Redirect(http.StatusFound, "/auth")
 	})
 
 	router.GET("/auth/logout", func(c *gin.Context) {
 		session := sessions.Default(c)
 		session.Clear()
-		session.Save()
-		c.JSON(http.StatusOK, gin.H{"message": "logged out"})
-	})
-
-	router.GET("/auth/whoami", func(c *gin.Context) {
-		session := sessions.Default(c)
-		accountID := session.Get("account_id")
-		if accountID == nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "not logged in"})
-			return
-		}
-		dbAccount, err := gorm.G[models.Account](deps.Config.Database()).
-			Preload("Tokens", nil).
-			Where(models.Account{ID: uuid.MustParse(accountID.(string))}).
-			First(c.Request.Context())
+		session.AddFlash("logged out")
+		err := session.Save()
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to retrieve account: %w", err))
-			return
+			deps.Logger.WithError(err).Error("Failed to save session")
 		}
-		c.JSON(http.StatusOK, dbAccount)
+		c.Redirect(http.StatusFound, "/")
 	})
 
 	if deps.Config.SlackClientID() != "" && deps.Config.SlackClientSecret() != "" {
@@ -341,7 +393,7 @@ func NewRouter(deps *Deps) http.Handler {
 	router.GET("/slack/:slackOrgId/avatar/:profileIdentifier", cors(), avatarHandler(deps, deps.DefaultAvatar))
 	router.OPTIONS("/slack/:slackOrgId/avatar/:profileIdentifier", cors())
 	router.GET("/slack/:slackOrgId/webcomponent.js", cors(), webcomponentHandler(deps.StaticHandler))
-	router.NoRoute(gin.WrapH(deps.StaticHandler))
+	// router.NoRoute(gin.WrapH(deps.StaticHandler))
 
 	return router
 }

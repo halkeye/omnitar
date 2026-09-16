@@ -103,6 +103,7 @@ require (
 	github.com/tklauser/numcpus v0.12.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
+	github.com/wader/gormstore/v2 v2.0.5 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.8.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

@@ -70,7 +70,6 @@ func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth in
 	val, err, _ := s.sg.Do(slackID, func() (any, error) {
 		var person *Person
 		cacheVal, err := s.cacheManager.Get(ctx, slackID)
-		s.logger.WithField("slackID", slackID).WithError(err).Debug("cache get")
 		if err != nil && !(store.NotFound{}).Is(err) {
 			return nil, fmt.Errorf("cache get: %w", err)
 		}
@@ -82,7 +81,6 @@ func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth in
 			return person, nil
 		}
 
-		s.logger.WithField("slackID", slackID).Debug("cache miss")
 		slackUserProfile, err := s.client.GetUserProfile(&slack.GetUserProfileParameters{UserID: slackID, IncludeLabels: true})
 		if err != nil {
 			return nil, fmt.Errorf("slack users.profile.get: %w", err)
@@ -112,7 +110,6 @@ func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth in
 			return nil, fmt.Errorf("cache marshal: %w", err)
 		}
 		err = s.cacheManager.Set(ctx, slackID, cacheVal, store.WithExpiration(time.Hour))
-		s.logger.WithField("slackID", slackID).WithField("size", len(cacheVal)).WithError(err).Debug("cache set")
 		if err != nil {
 			s.logger.WithField("slackID", slackID).WithField("size", len(cacheVal)).WithError(err).Warn("cache set")
 		}
@@ -127,7 +124,7 @@ func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth in
 func (s *SlackSource) Lookup(ctx context.Context, hashedToken string) (Person, error) {
 	val, ok := s.emailMap.Load(hashedToken)
 	if !ok {
-		s.logger.WithField("hashedToken", hashedToken).Debug("unknown token to email")
+		s.logger.WithField("hashedToken", hashedToken).Warn("unknown token to email")
 		return Person{}, nil
 	}
 
@@ -135,10 +132,8 @@ func (s *SlackSource) Lookup(ctx context.Context, hashedToken string) (Person, e
 
 	person, err := s.getUser(ctx, slackID, 1)
 	if err != nil {
-		s.logger.WithError(err).Debug("err")
 		return Person{}, err
 	}
-	s.logger.WithField("person", val).Debug("person")
 	return person, nil
 }
 

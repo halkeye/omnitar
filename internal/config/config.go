@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/halkeye/omnitar/internal/directory"
 	"github.com/halkeye/omnitar/internal/models"
 	"github.com/halkeye/omnitar/internal/refresh"
@@ -176,7 +178,7 @@ type Config interface {
 	SessionKey() string
 	Database() *gorm.DB
 
-	FindOrCreateTokenAndAccount(ctx context.Context, token models.Token) (*models.Token, error)
+	FindOrCreateTokenAndAccount(ctx context.Context, accountUUID string, token models.Token) (models.Token, error)
 
 	Source(sourceID string) directory.Source
 	AddSource(sourceID string, source directory.Source) error
@@ -347,31 +349,45 @@ func initialLoad(
 	}
 }
 
-func (c *config) FindOrCreateTokenAndAccount(ctx context.Context, token models.Token) (*models.Token, error) {
+func (c *config) FindOrCreateTokenAndAccount(ctx context.Context, accountUUID string, token models.Token) (models.Token, error) {
+	var err error
 	dbToken := models.Token{}
+	dbAccount := &models.Account{}
+
 	result := c.Database_.
 		Where(models.Token{Origin: token.Origin, OriginID: token.OriginID}).
 		Preload("Account").
 		Attrs(token).
 		FirstOrCreate(&dbToken)
 	if result.Error != nil {
-		return nil, fmt.Errorf("failed to retrieve or initialize token: %w", result.Error)
+		return models.Token{}, fmt.Errorf("failed to retrieve or initialize token: %w", result.Error)
 	}
 	c.logger.WithField("dbToken", dbToken).Debug("Retrieved or initialized token")
 
-	dbAccount := models.Account{}
-	if dbToken.Account == nil {
-		err := gorm.G[models.Account](c.Database_).Create(ctx, &dbAccount)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create account: %w", err)
-		}
-
-		dbToken.Account = &dbAccount
-		dbToken.AccountUUID = &dbAccount.ID
-		result = c.Database_.Save(&dbToken)
+	if accountUUID != "" {
+		result := c.Database_.Where(models.Account{ID: uuid.MustParse(accountUUID)}).First(&dbAccount)
 		if result.Error != nil {
-			return nil, fmt.Errorf("failed to save token with associated account: %w", result.Error)
+			return models.Token{}, fmt.Errorf("failed to retrieve account: %w", err)
 		}
 	}
-	return &dbToken, nil
+
+	if dbAccount == nil {
+		dbAccount = dbToken.Account
+	}
+
+	if dbToken.Account == nil {
+		err := gorm.G[models.Account](c.Database_).Create(ctx, dbAccount)
+		if err != nil {
+			return models.Token{}, fmt.Errorf("failed to create account: %w", err)
+		}
+	}
+
+	dbToken.Account = dbAccount
+	dbToken.AccountUUID = &dbAccount.ID
+	result = c.Database_.Save(&dbToken)
+	if result.Error != nil {
+		return models.Token{}, fmt.Errorf("failed to save token with associated account: %w", result.Error)
+	}
+
+	return dbToken, nil
 }

@@ -92,11 +92,6 @@ button:focus-visible {
   outline-offset: var(--sl-focus-ring-offset);
 }
 
-::selection {
-  background-color: var(--sl-color-primary-200);
-  color: var(--sl-color-neutral-900);
-}
-
 /* Show custom elements only after they're registered */
 :not(:defined),
 :not(:defined) * {
@@ -253,27 +248,27 @@ main {
   display: none;
 }
 
-.tabs__panel > :first-child {
+.tabs__panel> :first-child {
   margin-top: 0;
 }
 
-.tabs__panel > :last-child {
+.tabs__panel> :last-child {
   margin-bottom: 0;
 }
 
-.tabs__input:checked + .tabs__label {
+.tabs__input:checked+.tabs__label {
   background: var(--sl-color-neutral-0, #fff);
   border-bottom: 1px solid var(--sl-color-neutral-0, #fff);
   margin-bottom: -1px;
   color: var(--sl-color-primary-700, #0056b3);
 }
 
-#tab-active:checked ~ #panel-active,
-#tab-invalid:checked ~ #panel-invalid {
+#tab-active:checked~#panel-active,
+#tab-invalid:checked~#panel-invalid {
   display: block;
 }
 
-.tabs__input:focus-visible + .tabs__label {
+.tabs__input:focus-visible+.tabs__label {
   outline: var(--sl-focus-ring, 2px solid #0056b3);
   outline-offset: 2px;
 }

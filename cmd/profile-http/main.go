@@ -19,8 +19,8 @@ import (
 	"github.com/sirupsen/logrus"
 
 	root "github.com/halkeye/omnitar"
-	"github.com/halkeye/omnitar/internal/api"
 	"github.com/halkeye/omnitar/internal/config"
+	api "github.com/halkeye/omnitar/internal/http"
 )
 
 func main() {

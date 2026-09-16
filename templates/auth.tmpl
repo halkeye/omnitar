@@ -1,0 +1,10 @@
+{{template "header.tmpl" .}}
+<h2>Account {{.Account.ID }}</h2>
+<p>This is the content of Page 1.</p>
+<ul>
+{{range .Account.Tokens}}
+  <li>{{ .Origin }} - {{ .OriginID }}</li>
+{{end}}
+</ul>
+<a href="/auth/slack">Add Slack</a> -- <a href="/auth/atlassian">Add Atlassian (Jira)</a>
+{{template "footer.tmpl" .}}
