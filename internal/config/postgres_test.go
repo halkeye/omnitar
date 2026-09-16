@@ -9,6 +9,7 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 
 	"github.com/halkeye/omnitar/internal/config"
 )
@@ -55,7 +56,8 @@ func TestSetupDBWithPostgres(t *testing.T) {
 	ctx := t.Context()
 
 	cfg := config.New()
-	if err := cfg.SetupDB(ctx, postgres.Open(dsn)); err != nil {
+	cfg.Database_, _ = gorm.Open(postgres.Open(dsn))
+	if err := cfg.SetupDB(ctx); err != nil {
 		t.Fatalf("SetupDB() error = %v", err)
 	}
 	t.Cleanup(func() {
@@ -83,7 +85,8 @@ func TestSetupDBWithPostgresReloadsExistingSources(t *testing.T) {
 	ctx := t.Context()
 
 	first := config.New()
-	if err := first.SetupDB(ctx, postgres.Open(dsn)); err != nil {
+	first.Database_, _ = gorm.Open(postgres.Open(dsn))
+	if err := first.SetupDB(ctx); err != nil {
 		t.Fatalf("SetupDB() error = %v", err)
 	}
 	if err := first.SaveSourceConnection(ctx, "slack", "T456", "xoxb-token"); err != nil {
@@ -94,7 +97,8 @@ func TestSetupDBWithPostgresReloadsExistingSources(t *testing.T) {
 	}
 
 	second := config.New()
-	if err := second.SetupDB(ctx, postgres.Open(dsn)); err != nil {
+	second.Database_, _ = gorm.Open(postgres.Open(dsn))
+	if err := second.SetupDB(ctx); err != nil {
 		t.Fatalf("SetupDB() (reload) error = %v", err)
 	}
 	t.Cleanup(func() {

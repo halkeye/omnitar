@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 
 	"github.com/sirupsen/logrus/hooks/test"
 
@@ -47,7 +48,8 @@ func newTestRouter(t *testing.T) http.Handler {
 		source.people[directory.SHA256Hash(person.Email)] = person
 	}
 	cfg := config.New()
-	if err := cfg.SetupDB(t.Context(), sqlite.Open("file::memory:?cache=shared")); err != nil {
+	cfg.Database_, _ = gorm.Open(sqlite.Open("file::memory:?cache=shared"))
+	if err := cfg.SetupDB(t.Context()); err != nil {
 		t.Fatalf("SetupDB() error = %v", err)
 	}
 	t.Cleanup(func() {
@@ -76,7 +78,8 @@ func newSlackAuthTestRouter(t *testing.T, apiURL string) (http.Handler, config.C
 	cfg := config.New()
 	cfg.SlackClientID_ = "test-client-id"
 	cfg.SlackClientSecret_ = "test-client-secret"
-	if err := cfg.SetupDB(t.Context(), sqlite.Open("file::memory:?cache=shared")); err != nil {
+	cfg.Database_, _ = gorm.Open(sqlite.Open("file::memory:?cache=shared"))
+	if err := cfg.SetupDB(t.Context()); err != nil {
 		t.Fatalf("SetupDB() error = %v", err)
 	}
 	t.Cleanup(func() {

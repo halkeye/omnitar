@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
+	"reflect"
 	"sync"
 	"time"
 
@@ -17,23 +19,26 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // config holds all runtime configuration for the service.
 type config struct {
-	AppEnv             string            `env:"APP_ENV,required" envDefault:"development"`
-	DatabaseURL        string            `env:"DATABASE_URL"`
-	SlackClientID_     string            `env:"SLACK_CLIENT_ID"`
-	SlackClientSecret_ string            `env:"SLACK_CLIENT_SECRET"`
-	SlackBotTokens     map[string]string `env:"SLACK_BOT_TOKENS,required"`
-	Port               string            `env:"PORT,required" envDefault:"8080"`
-	RefreshInterval    time.Duration     `env:"REFRESH_INTERVAL,required" envDefault:"2h"`
-	StartupTimeout     time.Duration     `env:"STARTUP_TIMEOUT,required" envDefault:"2m"`
-	LogLevel           string            `env:"LOG_LEVEL,required" envDefault:"info"`
-
-	db *gorm.DB
+	AppEnv                 string            `env:"APP_ENV,required" envDefault:"development"`
+	SlackClientID_         string            `env:"SLACK_CLIENT_ID"`
+	SlackClientSecret_     string            `env:"SLACK_CLIENT_SECRET"`
+	AtlassianClientID_     string            `env:"ATLASSIAN_CLIENT_ID"`
+	AtlassianClientSecret_ string            `env:"ATLASSIAN_CLIENT_SECRET"`
+	SlackBotTokens         map[string]string `env:"SLACK_BOT_TOKENS,required"`
+	Port                   string            `env:"PORT,required" envDefault:"8080"`
+	RefreshInterval        time.Duration     `env:"REFRESH_INTERVAL,required" envDefault:"2h"`
+	StartupTimeout         time.Duration     `env:"STARTUP_TIMEOUT,required" envDefault:"2m"`
+	LogLevel               string            `env:"LOG_LEVEL,required" envDefault:"info"`
+	SessionKey_            string            `env:"SESSION_KEY,required" envDefault:"omnitar-session-key"`
+	Database_              *gorm.DB          `env:"DATABASE_URL" envDefault:""`
 
 	logger *logrus.Logger
 
@@ -42,18 +47,24 @@ type config struct {
 	refreshCancels map[string]context.CancelFunc
 }
 
-func (c *config) SetupDB(ctx context.Context, dialector gorm.Dialector) error {
+func (c *config) SetupDB(ctx context.Context) error {
+	var err error
 	c.logger.Debug("connecting to database")
-	db, err := gorm.Open(dialector, &gorm.Config{})
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
-	}
-	c.db = db
-
 	// Migrate the schema
-	db.AutoMigrate(&models.SourceConnection{})
+	err = c.Database_.AutoMigrate(&models.SourceConnection{})
+	if err != nil {
+		return fmt.Errorf("failed to migrate SourceConnection schema: %w", err)
+	}
+	err = c.Database_.AutoMigrate(&models.Account{})
+	if err != nil {
+		return fmt.Errorf("failed to migrate Account schema: %w", err)
+	}
+	err = c.Database_.AutoMigrate(&models.Token{})
+	if err != nil {
+		return fmt.Errorf("failed to migrate Token schema: %w", err)
+	}
 
-	sourceConnections, err := gorm.G[models.SourceConnection](db).Find(ctx)
+	sourceConnections, err := gorm.G[models.SourceConnection](c.Database_).Find(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch source connections from database: %w", err)
 	}
@@ -79,9 +90,42 @@ func New() *config {
 	return cfg
 }
 
+func parseDatabase(v string) (any, error) {
+	if v == "" {
+		return nil, nil
+	}
+	parsedURL, err := url.Parse(v)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse database URL: %w", err)
+	}
+
+	switch parsedURL.Scheme {
+	case "postgres", "postgresql":
+		db, err := gorm.Open(postgres.New(postgres.Config{DSN: v, PreferSimpleProtocol: true}), &gorm.Config{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to database: %w", err)
+		}
+		return *db, nil
+	case "sqlite", "sqlite3":
+		// remove the sqlite, then the ://
+		dsn := v[len(parsedURL.Scheme)+3:]
+		db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to database: %w", err)
+		}
+		return *db, nil
+	}
+	return nil, errors.New("unknown type")
+}
+
 func Load() (*config, error) {
 	cfg := New()
-	err := env.Parse(cfg)
+	err := env.ParseWithOptions(cfg, env.Options{
+		FuncMap: map[reflect.Type]env.ParserFunc{
+			reflect.TypeFor[gorm.DB](): parseDatabase,
+		},
+	})
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
@@ -92,6 +136,12 @@ func Load() (*config, error) {
 		cfg.logger.SetLevel(level)
 	}
 
+	if cfg.Database_ != nil {
+		cfg.Database_.Logger = gormlogger.New(cfg.logger, gormlogger.Config{
+			LogLevel: gormlogger.Info, // gormlogger.LogLevel(cfg.logger.GetLevel()),
+		})
+	}
+
 	for slackOrgID, token := range cfg.SlackBotTokens {
 		cfg.logger.WithField("slackOrgID", slackOrgID).Info("adding Slack source")
 		if err := cfg.AddSource(slackOrgID, directory.NewSlackSource(cfg.logger, slackOrgID, token)); err != nil {
@@ -99,12 +149,8 @@ func Load() (*config, error) {
 		}
 	}
 
-	if cfg.DatabaseURL != "" {
-		dialector := postgres.Config{
-			DSN:                  cfg.DatabaseURL,
-			PreferSimpleProtocol: true, // disables implicit prepared statement usage
-		}
-		if err := cfg.SetupDB(context.Background(), postgres.New(dialector)); err != nil {
+	if cfg.Database_ != nil {
+		if err := cfg.SetupDB(context.Background()); err != nil {
 			return nil, fmt.Errorf("failed to setup database: %w", err)
 		}
 	}
@@ -123,6 +169,14 @@ type Config interface {
 
 	SlackClientID() string
 	SlackClientSecret() string
+
+	AtlassianClientID() string
+	AtlassianClientSecret() string
+
+	SessionKey() string
+	Database() *gorm.DB
+
+	FindOrCreateTokenAndAccount(ctx context.Context, token models.Token) (*models.Token, error)
 
 	Source(sourceID string) directory.Source
 	AddSource(sourceID string, source directory.Source) error
@@ -146,6 +200,22 @@ func (c *config) SlackClientSecret() string {
 	return c.SlackClientSecret_
 }
 
+func (c *config) AtlassianClientID() string {
+	return c.AtlassianClientID_
+}
+
+func (c *config) AtlassianClientSecret() string {
+	return c.AtlassianClientSecret_
+}
+
+func (c *config) SessionKey() string {
+	return c.SessionKey_
+}
+
+func (c *config) Database() *gorm.DB {
+	return c.Database_
+}
+
 func (c *config) Source(sourceID string) directory.Source {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -162,11 +232,11 @@ func (c *config) Close() error {
 	}
 	c.mu.Unlock()
 
-	if c.db == nil {
+	if c.Database_ == nil {
 		return nil
 	}
 
-	sqlDB, err := c.db.DB()
+	sqlDB, err := c.Database_.DB()
 	if err != nil {
 		return fmt.Errorf("failed to get underlying database connection: %w", err)
 	}
@@ -178,7 +248,7 @@ func (c *config) Close() error {
 
 func (c *config) SaveSourceConnection(ctx context.Context, sourceType string, sourceID string, token string) error {
 	conn := &models.SourceConnection{Type: sourceType, TeamID: sourceID, Token: token}
-	if c.db != nil {
+	if c.Database_ != nil {
 		// Re-authorizing an already-connected team hits the same
 		// (type, team_id), so upsert the token instead of erroring on the
 		// unique index.
@@ -186,7 +256,7 @@ func (c *config) SaveSourceConnection(ctx context.Context, sourceType string, so
 			Columns:   []clause.Column{{Name: "type"}, {Name: "team_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{"token"}),
 		}
-		err := gorm.G[models.SourceConnection](c.db, onConflict).Create(ctx, conn)
+		err := gorm.G[models.SourceConnection](c.Database_, onConflict).Create(ctx, conn)
 		if err != nil {
 			return fmt.Errorf("failed to save source connection: %w", err)
 		}
@@ -275,4 +345,33 @@ func initialLoad(
 			backoff = maxBackoff
 		}
 	}
+}
+
+func (c *config) FindOrCreateTokenAndAccount(ctx context.Context, token models.Token) (*models.Token, error) {
+	dbToken := models.Token{}
+	result := c.Database_.
+		Where(models.Token{Origin: token.Origin, OriginID: token.OriginID}).
+		Preload("Account").
+		Attrs(token).
+		FirstOrCreate(&dbToken)
+	if result.Error != nil {
+		return nil, fmt.Errorf("failed to retrieve or initialize token: %w", result.Error)
+	}
+	c.logger.WithField("dbToken", dbToken).Debug("Retrieved or initialized token")
+
+	dbAccount := models.Account{}
+	if dbToken.Account == nil {
+		err := gorm.G[models.Account](c.Database_).Create(ctx, &dbAccount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create account: %w", err)
+		}
+
+		dbToken.Account = &dbAccount
+		dbToken.AccountUUID = &dbAccount.ID
+		result = c.Database_.Save(&dbToken)
+		if result.Error != nil {
+			return nil, fmt.Errorf("failed to save token with associated account: %w", result.Error)
+		}
+	}
+	return &dbToken, nil
 }

@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httputil"
@@ -26,7 +27,7 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		cfg.Logger().WithError(err).Fatal("invalid configuration")
+		panic(fmt.Errorf("failed to load config: %w", err))
 	}
 
 	var staticHandler http.Handler
