@@ -41,19 +41,14 @@ func main() {
 		staticHandler = http.FileServerFS(serverRoot)
 	}
 
-	router := api.NewRouter(&api.Deps{
-		Logger:        cfg.Logger(),
-		Config:        cfg,
-		DefaultAvatar: api.DefaultAvatarSVG(),
-		StaticHandler: staticHandler,
-	})
+	router := api.New(api.WithLogger(cfg.Logger()), api.WithConfig(cfg), api.WithStaticHandler(staticHandler))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           router,
+		Handler:           router.NewHTTPHandler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

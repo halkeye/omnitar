@@ -24,7 +24,6 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 // config holds all runtime configuration for the service.
@@ -138,12 +137,6 @@ func Load() (*config, error) {
 		cfg.logger.SetLevel(level)
 	}
 
-	if cfg.Database_ != nil {
-		cfg.Database_.Logger = gormlogger.New(cfg.logger, gormlogger.Config{
-			LogLevel: gormlogger.Info, // gormlogger.LogLevel(cfg.logger.GetLevel()),
-		})
-	}
-
 	for slackOrgID, token := range cfg.SlackBotTokens {
 		cfg.logger.WithField("slackOrgID", slackOrgID).Info("adding Slack source")
 		if err := cfg.AddSource(slackOrgID, directory.NewSlackSource(cfg.logger, slackOrgID, token)); err != nil {
@@ -154,6 +147,14 @@ func Load() (*config, error) {
 	if cfg.Database_ != nil {
 		if err := cfg.SetupDB(context.Background()); err != nil {
 			return nil, fmt.Errorf("failed to setup database: %w", err)
+		}
+	}
+
+	if cfg.Database_ != nil {
+		cfg.Database_.Logger = gormlogrus{
+			logger:                cfg.logger,
+			SourceField:           "source",
+			SkipErrRecordNotFound: true,
 		}
 	}
 
@@ -350,40 +351,38 @@ func initialLoad(
 }
 
 func (c *config) FindOrCreateTokenAndAccount(ctx context.Context, accountUUID string, token models.Token) (models.Token, error) {
-	var err error
 	dbToken := models.Token{}
-	dbAccount := &models.Account{}
+
+	c.logger.WithFields(logrus.Fields{
+		"token.origin":   token.Origin,
+		"token.originID": token.OriginID,
+		"accountUUID":    accountUUID,
+	}).Debug("Finding or creating token")
 
 	result := c.Database_.
 		Where(models.Token{Origin: token.Origin, OriginID: token.OriginID}).
-		Preload("Account").
 		Attrs(token).
 		FirstOrCreate(&dbToken)
 	if result.Error != nil {
 		return models.Token{}, fmt.Errorf("failed to retrieve or initialize token: %w", result.Error)
 	}
 	c.logger.WithField("dbToken", dbToken).Debug("Retrieved or initialized token")
-
-	if accountUUID != "" {
-		result := c.Database_.Where(models.Account{ID: uuid.MustParse(accountUUID)}).First(&dbAccount)
-		if result.Error != nil {
-			return models.Token{}, fmt.Errorf("failed to retrieve account: %w", err)
-		}
+	if accountUUID == "" && dbToken.AccountUUID != nil {
+		accountUUID = dbToken.AccountUUID.String()
 	}
 
-	if dbAccount == nil {
-		dbAccount = dbToken.Account
-	}
-
-	if dbToken.Account == nil {
+	// if no account was found/created, create a new one
+	if accountUUID == "" {
+		dbAccount := &models.Account{}
 		err := gorm.G[models.Account](c.Database_).Create(ctx, dbAccount)
 		if err != nil {
 			return models.Token{}, fmt.Errorf("failed to create account: %w", err)
 		}
+		accountUUID = dbAccount.ID.String()
 	}
 
-	dbToken.Account = dbAccount
-	dbToken.AccountUUID = &dbAccount.ID
+	// Make sure the token is associated with the right account now
+	dbToken.AccountUUID = new(uuid.MustParse(accountUUID))
 	result = c.Database_.Save(&dbToken)
 	if result.Error != nil {
 		return models.Token{}, fmt.Errorf("failed to save token with associated account: %w", result.Error)

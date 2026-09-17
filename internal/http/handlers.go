@@ -9,16 +9,16 @@ import (
 	"github.com/slack-go/slack"
 )
 
-func healthzHandler(c *gin.Context) {
+func (router *Deps) healthzHandler(c *gin.Context) {
 	c.String(http.StatusOK, "ok")
 }
 
 // profileHandler serves Gravatar-style profile JSON for a known
 // profileIdentifier (MD5 or SHA256 hash of a normalized email).
-func profileHandler(d *Deps) gin.HandlerFunc {
+func (router *Deps) profileHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ll := d.Logger.WithField("slackOrgId", c.Param("slackOrgId"))
-		source := d.Config.Source(c.Param("slackOrgId"))
+		ll := router.Logger.WithField("slackOrgId", c.Param("slackOrgId"))
+		source := router.Config.Source(c.Param("slackOrgId"))
 		if source == nil {
 			ll.Debug("unknown Slack org ID")
 			c.Status(http.StatusNotFound)
@@ -46,9 +46,9 @@ func profileHandler(d *Deps) gin.HandlerFunc {
 // profileIdentifier 302s to the cached Slack avatar URL; an unknown one
 // honors the Gravatar ?d= convention (d=404 -> 404, anything else -> the
 // bundled default silhouette).
-func avatarHandler(d *Deps, defaultAvatar []byte) gin.HandlerFunc {
+func (router *Deps) avatarHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		source := d.Config.Source(c.Param("slackOrgId"))
+		source := router.Config.Source(c.Param("slackOrgId"))
 		if source == nil {
 			c.Status(http.StatusNotFound)
 			return
@@ -66,7 +66,7 @@ func avatarHandler(d *Deps, defaultAvatar []byte) gin.HandlerFunc {
 			}
 
 			c.Header("Cache-Control", "public, max-age=3600, no-transform")
-			c.Data(http.StatusOK, "image/svg+xml", defaultAvatar)
+			c.Data(http.StatusOK, "image/svg+xml", router.DefaultAvatar)
 			return
 		}
 
@@ -74,7 +74,7 @@ func avatarHandler(d *Deps, defaultAvatar []byte) gin.HandlerFunc {
 	}
 }
 
-func slackInstallHandler(d *Deps) func(c *gin.Context) {
+func (router *Deps) slackInstallHandler() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		_, errExists := c.GetQuery("error")
 		if errExists {
@@ -89,22 +89,22 @@ func slackInstallHandler(d *Deps) func(c *gin.Context) {
 		}
 
 		var opts []slack.OAuthOption
-		if d.SlackAPIURL != "" {
-			opts = append(opts, slack.OAuthOptionAPIURL(d.SlackAPIURL))
+		if router.SlackAPIURL != "" {
+			opts = append(opts, slack.OAuthOptionAPIURL(router.SlackAPIURL))
 		}
-		resp, err := slack.GetOAuthV2Response(http.DefaultClient, d.Config.SlackClientID(), d.Config.SlackClientSecret(), code, "", opts...)
+		resp, err := slack.GetOAuthV2Response(http.DefaultClient, router.Config.SlackClientID(), router.Config.SlackClientSecret(), code, "", opts...)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "error exchanging temporary code for access token: %s", err.Error())
 			return
 		}
 
-		err = d.Config.SaveSourceConnection(c.Request.Context(), "slack", resp.Team.ID, resp.AccessToken)
+		err = router.Config.SaveSourceConnection(c.Request.Context(), "slack", resp.Team.ID, resp.AccessToken)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "error storing slack access token: %s", err.Error())
 			return
 		}
 
-		if err := d.Config.AddSource(resp.Team.ID, directory.NewSlackSource(d.Logger, resp.Team.ID, resp.AccessToken)); err != nil {
+		if err := router.Config.AddSource(resp.Team.ID, directory.NewSlackSource(router.Logger, resp.Team.ID, resp.AccessToken)); err != nil {
 			c.String(http.StatusInternalServerError, "error starting refresher for slack source: %s", err.Error())
 			return
 		}
