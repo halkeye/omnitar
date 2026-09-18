@@ -1,10 +1,24 @@
-{{template "header.tmpl" .}}
-<h2>Account {{.Account.ID }}</h2>
-<p>This is the content of Page 1.</p>
-<ul>
-{{range .Account.Tokens}}
-  <li>{{ .Origin }} - {{ .OriginID }}</li>
-{{end}}
-</ul>
+{{ template "header.tmpl" . }}
+
+<script type="module" src="/account/{{ $.Account.ID }}/webcomponent.js"></script>
+<h2>Account {{ $.Account.ID }}</h2>
+
+<p><copy-paste>&lt;script type=&quot;module&quot; src=&quot;{{ $.baseURL }}account/{{ $.Account.ID }}/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p>
+
+<p><omnitar-profile email="slack@gavinmogan.com">gmogan</omnitar-profile></p>
+<p><omnitar-issue key="HR-2">HR-2</omnitar-issue></p>
+
+<h3>Sources</h3>
+<table style="padding: 15px">
+{{ range $token := .Account.Tokens }}
+  <tr>
+    <td>{{ $token.Origin }}</td>
+    <td>{{ $token.OriginID }}</td>
+    <td><a data-method="delete" data-confirm="really delete?" href="/auth/{{ $token.ID }}">(delete)</a></td>
+  </tr>
+{{ end }}
+</table>
+
 <a href="/auth/slack">Add Slack</a> -- <a href="/auth/atlassian">Add Atlassian (Jira)</a>
-{{template "footer.tmpl" .}}
+
+{{ template "footer.tmpl" . }}

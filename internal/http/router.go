@@ -5,8 +5,6 @@
 package api
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,9 +16,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	gormsessions "github.com/gin-contrib/sessions/gorm"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"golang.org/x/oauth2"
-	"gorm.io/gorm"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
@@ -89,91 +85,6 @@ func New(opts ...RouterOptions) *Deps {
 	return d
 }
 
-func (router *Deps) webcomponentHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Request.URL.Path = "/webcomponent.js"
-		router.StaticHandler.ServeHTTP(c.Writer, c.Request)
-	}
-}
-
-func (router *Deps) cors() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type")
-		if c.Request.Method == http.MethodOptions {
-			c.Status(http.StatusNoContent)
-			c.Abort()
-		}
-	}
-}
-
-func (router *Deps) noTransform() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("Cache-Control", "no-transform")
-	}
-}
-
-func (router *Deps) requestLogger() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		started := time.Now()
-
-		c.Next()
-
-		if router.Logger == nil {
-			return
-		}
-
-		ll := router.Logger.WithFields(logrus.Fields{
-			"client_ip": c.ClientIP(),
-			"latency":   time.Since(started).String(),
-			"method":    c.Request.Method,
-			"path":      c.Request.URL.Path,
-			"status":    c.Writer.Status(),
-		})
-		if len(c.Errors) != 0 {
-			for _, e := range c.Errors {
-				ll.WithError(e).Error("request error")
-			}
-		} else {
-			ll.Info("request complete")
-		}
-	}
-}
-
-func (router *Deps) recovery() gin.HandlerFunc {
-	return gin.CustomRecovery(func(c *gin.Context, err any) {
-		if router.Logger != nil {
-			router.Logger.WithField("error", err).Error("recovered from panic")
-		}
-		c.AbortWithStatus(http.StatusInternalServerError)
-	})
-}
-
-func (router *Deps) configureGinLogging() {
-	if router.Logger == nil {
-		return
-	}
-
-	gin.DebugPrintFunc = router.Logger.Debugf
-	gin.DebugPrintRouteFunc = func(method, path, handler string, handlers int) {
-		router.Logger.WithFields(logrus.Fields{
-			"handler":  handler,
-			"handlers": handlers,
-			"method":   method,
-			"path":     path,
-		}).Debug("route registered")
-	}
-}
-
-func generateRandomState() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
-}
-
 func (router *Deps) getSlackOauth(c *gin.Context) *oauth2.Config {
 	callbackURL := location.Get(c)
 	callbackURL.Path = "/auth/slack/callback"
@@ -210,7 +121,17 @@ func (router *Deps) getAtlassianOauth(c *gin.Context) *oauth2.Config {
 
 // NewRouter builds the full route table for the service.
 func (router *Deps) NewHTTPHandler() http.Handler {
-	router.configureGinLogging()
+	if router.Logger != nil {
+		gin.DebugPrintFunc = router.Logger.Debugf
+		gin.DebugPrintRouteFunc = func(method, path, handler string, handlers int) {
+			router.Logger.WithFields(logrus.Fields{
+				"handler":  handler,
+				"handlers": handlers,
+				"method":   method,
+				"path":     path,
+			}).Debug("route registered")
+		}
+	}
 
 	store := gormsessions.NewStore(router.Config.Database(), true, []byte(router.Config.SessionKey()))
 	ginrouter := gin.New()
@@ -221,7 +142,8 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 		location.Default(),
 		sessions.Sessions("mysession", store),
 		router.requestLogger(),
-		router.recovery(),
+		// router.recovery(),
+		gin.RecoveryWithWriter(router.Logger.Writer()),
 		router.noTransform(),
 	)
 	ginrouter.GET("/metrics", gin.WrapH(promhttp.Handler()))
@@ -229,46 +151,9 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 	ginrouter.Static("/js", "./static/js")
 	ginrouter.Static("/css", "./static/css")
 
-	ginrouter.GET("/", func(c *gin.Context) {
-		session := sessions.Default(c)
-		baseURL := location.Get(c)
-		baseURL.Path = "/"
-
-		flashes := session.Flashes()
-		session.Save()
-
-		c.HTML(http.StatusOK, "index.tmpl", gin.H{"baseURL": baseURL, "Flashes": flashes})
-	})
-
-	ginrouter.GET("/auth", func(c *gin.Context) {
-		session := sessions.Default(c)
-		accountID := session.Get("account_id")
-		if accountID == nil {
-			router.Logger.Debug("No account_id in session, redirecting to login")
-			session.AddFlash("You must log in to view this page.")
-			err := session.Save()
-			if err != nil {
-				router.Logger.WithError(err).Error("Failed to save session")
-			}
-
-			c.Redirect(http.StatusFound, "/")
-			return
-		}
-
-		dbAccount, err := gorm.G[models.Account](router.Config.Database()).
-			Preload("Tokens", nil).
-			Where(models.Account{ID: uuid.MustParse(accountID.(string))}).
-			First(c.Request.Context())
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to retrieve account: %w", err))
-			return
-		}
-
-		flashes := session.Flashes()
-		session.Save()
-
-		c.HTML(http.StatusOK, "auth.tmpl", gin.H{"Account": dbAccount, "Flashes": flashes})
-	})
+	ginrouter.GET("/", router.handlerIndexPage())
+	ginrouter.GET("/auth", router.handlerAuthPage())
+	ginrouter.DELETE("/auth/:token", router.deleteTokenHandler())
 
 	ginrouter.GET("/auth/:provider", func(c *gin.Context) {
 		session := sessions.Default(c)
@@ -347,14 +232,26 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 		case models.Slack:
 			router.Logger.Info("something")
 
-			dbToken.Origin = "slack"
-			dbToken.OriginID = token.Extra("team").(map[string]any)["id"].(string)
-			// FIXME - check extra and all that is right
+			for _, field := range []string{"enterprise", "team"} {
+				extra, ok := token.Extra(field).(map[string]any)
+				router.Logger.WithField("field", field).WithField("extra", extra).Debug("Retrieved extra field from token")
+				if !ok {
+					continue
+				}
+				originID, ok := extra["id"].(string)
+				router.Logger.WithField("field", field).WithField("originID", originID).Debug("Retrieved origin ID from extra field")
+				if !ok {
+					continue
+				}
 
-			dbToken, err = router.Config.FindOrCreateTokenAndAccount(ctx, accountUUID, dbToken)
-			if err != nil {
-				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to find or create slack token and account: %w", err))
-				return
+				dbSlackToken := dbToken
+				dbSlackToken.Origin = "slack"
+				dbSlackToken.OriginID = originID
+				dbToken, err = router.Config.FindOrCreateTokenAndAccount(ctx, accountUUID, dbSlackToken)
+				if err != nil {
+					c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to find or create slack token and account: %w", err))
+					return
+				}
 			}
 		case models.Atlassian:
 			router.Logger.Info("something")
@@ -435,7 +332,8 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 	ginrouter.OPTIONS("/slack/:slackOrgId/avatar/:profileIdentifier", router.cors())
 	ginrouter.GET("/slack/:slackOrgId/webcomponent.js", router.cors(), router.webcomponentHandler())
 
-	ginrouter.GET("/account/:accountUUID/profiles/:profileIdentifier", router.cors(), router.profileHandler())
+	ginrouter.GET("/account/:accountUUID/profiles/:profileIdentifier", router.cors(), router.accountMiddleware(), router.profileHandler2())
+	ginrouter.GET("/account/:accountUUID/avatar/:profileIdentifier", router.cors(), router.avatarHandler())
 	ginrouter.GET("/account/:accountUUID/webcomponent.js", router.cors(), router.webcomponentHandler())
 	ginrouter.NoRoute(gin.WrapH(router.StaticHandler))
 
