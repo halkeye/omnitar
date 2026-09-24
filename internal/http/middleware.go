@@ -3,12 +3,9 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
-	"github.com/gin-contrib/location/v2"
 	"github.com/gin-gonic/gin"
-	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -89,8 +86,24 @@ func (router *Deps) recovery() gin.HandlerFunc {
 	})
 }
 
-func (router *Deps) middlewareSessionUser(c *gin.Context) {
+func (router *Deps) errorHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next() // Process the request first
 
+		// Check if any errors were added to the context
+		if len(c.Errors) > 0 {
+			err := c.Errors.Last().Err
+
+			router.Logger.WithError(err).Error("http error")
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+		}
+	}
+}
+
+func (router *Deps) middlewareSessionUser(c *gin.Context) {
 	session := sessions.Default(c)
 	accountID := sessions.Get[string](session, "account_id")
 
@@ -107,7 +120,6 @@ func (router *Deps) middlewareSessionUser(c *gin.Context) {
 	}
 
 	dbAccount, err := gorm.G[models.Account](router.Config.Database()).
-		Preload("Tokens", nil).
 		Where(models.Account{ID: uuid.MustParse(accountID)}).
 		First(c.Request.Context())
 
@@ -117,24 +129,4 @@ func (router *Deps) middlewareSessionUser(c *gin.Context) {
 	}
 
 	c.Set("account", dbAccount)
-}
-
-func (router *Deps) middlewareWebauthn(c *gin.Context) {
-	baseURL := location.Get(c)
-	baseURL.Path = ""
-
-	config := &webauthn.Config{
-		RPDisplayName: "omnitar",
-		RPID:          strings.Split(baseURL.Host, ":")[0],
-		RPOrigins:     []string{baseURL.String()},
-	}
-
-	w, err := webauthn.New(config)
-	if err != nil {
-		router.Logger.WithError(err).Debug("FIXME - does this need manual logging?")
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-
-	c.Set("webauthn", w)
 }

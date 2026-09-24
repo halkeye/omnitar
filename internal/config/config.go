@@ -53,7 +53,7 @@ func (c *config) SetupDB(ctx context.Context) error {
 	var err error
 	c.logger.Debug("connecting to database")
 	// Migrate the schema
-	err = c.Database_.AutoMigrate(&models.SourceConnection{}, &models.Account{}, &models.Token{}, &models.WebAuthnCredential{})
+	err = c.Database_.AutoMigrate(&models.SourceConnection{}, &models.Account{}, &models.Token{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate schema: %w", err)
 	}

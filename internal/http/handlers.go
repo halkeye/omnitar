@@ -9,10 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-webauthn/webauthn/protocol"
-	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
 
 	"gorm.io/gorm"
@@ -139,13 +136,7 @@ func (router *Deps) handlerMyAccountPage(c *gin.Context) {
 		return
 	}
 
-	credentials, err := gorm.G[*models.WebAuthnCredential](router.Config.Database()).Where(models.Token{AccountUUID: new(dbAccount.ID)}).Find(c.Request.Context())
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to load webauthn credentials: %w", err))
-		return
-	}
-
-	r := gintemplrenderer.New(c.Request.Context(), http.StatusOK, templates.AccountMyPage(&dbAccount, tokens, credentials))
+	r := gintemplrenderer.New(c.Request.Context(), http.StatusOK, templates.AccountMyPage(&dbAccount, tokens))
 	c.Render(http.StatusOK, r)
 }
 
@@ -243,131 +234,6 @@ func (router *Deps) deleteTokenHandler(c *gin.Context) {
 
 	session.AddFlash("Token deleted successfully.")
 	c.Status(http.StatusNoContent)
-}
-
-func (router *Deps) handlerPasskeyCreateChallenge(c *gin.Context) {
-	w := getTyped[*webauthn.WebAuthn](c, "webauthn")
-	dbAccount := getTyped[models.Account](c, "account")
-	session := sessions.Default(c)
-
-	var (
-		err      error
-		creation *protocol.CredentialCreation
-		s        *webauthn.SessionData
-	)
-
-	opts := []webauthn.RegistrationOption{
-		webauthn.WithResidentKeyRequirement(protocol.ResidentKeyRequirementRequired),
-		webauthn.WithExclusions(webauthn.Credentials(dbAccount.WebAuthnCredentials()).CredentialDescriptors()),
-		webauthn.WithExtensions(webauthn.WithExtensionCredProps()),
-	}
-
-	if creation, s, err = w.BeginMediatedRegistration(&dbAccount, protocol.MediationDefault, opts...); err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-
-	// Crude example saving the session data securely to be loaded in the finish step of the register action. This
-	// should be stored in such a way that the user and user agent has no access to it. For example using an opaque
-	// session cookie.
-	sessions.Set(session, "webauthn_passkey", s)
-	sessions.MustSave(session)
-
-	c.JSON(http.StatusOK, creation)
-}
-
-func (router *Deps) handlerPasskeyValidateCreateChallengeResponse(c *gin.Context) {
-	w := getTyped[*webauthn.WebAuthn](c, "webauthn")
-	dbAccount := getTyped[models.Account](c, "account")
-	session := sessions.Default(c)
-
-	s := sessions.Get[*webauthn.SessionData](session, "webauthn_passkey")
-	if s == nil {
-		session.AddFlash("No session data.")
-		c.Redirect(http.StatusFound, "/")
-		return
-	}
-
-	credential, err := w.FinishRegistration(&dbAccount, *s, c.Request)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-
-	err = gorm.G[models.WebAuthnCredential](router.Config.Database()).Create(c.Request.Context(), &models.WebAuthnCredential{
-		ID:          credential.ID,
-		AccountUUID: dbAccount.ID,
-		Account:     dbAccount,
-		Credential:  *credential,
-	})
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-
-	c.Status(http.StatusOK)
-}
-
-func (router *Deps) handlerPasskeyLoginChallenge(c *gin.Context) {
-	w := getTyped[*webauthn.WebAuthn](c, "webauthn")
-	session := sessions.Default(c)
-
-	assertion, s, err := w.BeginDiscoverableMediatedLogin(protocol.MediationDefault)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-
-	sessions.Set(session, "passkey", s)
-	sessions.MustSave(session)
-
-	c.JSON(http.StatusOK, assertion)
-}
-
-func (router *Deps) handlerPasskeyLoginChallengeResponse(c *gin.Context) {
-	w := getTyped[*webauthn.WebAuthn](c, "webauthn")
-	session := sessions.Default(c)
-
-	s := sessions.Get[*webauthn.SessionData](session, "passkey")
-	if s == nil {
-		session.AddFlash("No session data.")
-		c.Redirect(http.StatusFound, "/")
-		return
-	}
-
-	loadUserPasskey := func(rawID, userHandle []byte) (user webauthn.User, err error) {
-		router.Logger.WithFields(logrus.Fields{"raw_id": rawID, "user_handle": userHandle}).Debug("loadUserPasskey")
-		dbAccount, err := gorm.G[models.Account](router.Config.Database()).
-			Preload("WebAuthnCredential", nil).
-			Where(models.WebAuthnCredential{ID: rawID}).
-			First(c.Request.Context())
-		return &dbAccount, err
-	}
-
-	validatedUser, validatedCredential, err := w.FinishPasskeyLogin(loadUserPasskey, *s, c.Request)
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
-		return
-	}
-
-	// This type assertion is necessary to perform the necessary updates.
-	dbAccount, ok := validatedUser.(*models.Account)
-	if !ok {
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-
-	_, err = gorm.G[models.WebAuthnCredential](router.Config.Database()).
-		Where(models.WebAuthnCredential{}).
-		Updates(c.Request.Context(), models.WebAuthnCredential{
-			AccountUUID: dbAccount.ID,
-			Account:     *dbAccount,
-			Credential:  *validatedCredential,
-		})
-	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to save source connection: %w", err))
-	}
-	c.Status(http.StatusOK)
 }
 
 func (router *Deps) handlerProvider(c *gin.Context) {

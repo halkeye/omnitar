@@ -118,24 +118,6 @@ func (router *Deps) getAtlassianOauth(c *gin.Context) *oauth2.Config {
 	}
 }
 
-// ErrorHandler captures errors and returns a consistent JSON error response
-func ErrorHandler(log *logrus.Logger) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Next() // Process the request first
-
-		// Check if any errors were added to the context
-		if len(c.Errors) > 0 {
-			err := c.Errors.Last().Err
-
-			log.WithError(err).Error("http error")
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": err.Error(),
-			})
-		}
-	}
-}
-
 // NewRouter builds the full route table for the service.
 func (router *Deps) NewHTTPHandler() http.Handler {
 	if router.Logger != nil {
@@ -157,11 +139,11 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 	ginrouter.HTMLRender = &gintemplrenderer.HTMLTemplRenderer{FallbackHtmlRenderer: ginHtmlRenderer}
 
 	ginrouter.Use(
-		ErrorHandler(router.Logger),
 		location.Default(),
 		sessions.Sessions("mysession", store),
 		router.requestLogger(),
-		// router.recovery(),
+		router.errorHandler(),
+		router.recovery(),
 		gin.Recovery(),
 		router.noTransform(),
 	)
@@ -222,12 +204,6 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 	ginrouter.GET("/account/:accountUUID/profiles/:profileIdentifier", router.cors, router.accountMiddleware, router.profileHandler2)
 	ginrouter.GET("/account/:accountUUID/avatar/:profileIdentifier", router.cors, router.avatarHandler)
 	ginrouter.GET("/account/:accountUUID/webcomponent.js", router.cors, router.webcomponentHandler)
-
-	ginrouter.GET("/webauthn/register", router.middlewareSessionUser, router.middlewareWebauthn, router.handlerPasskeyCreateChallenge)
-	ginrouter.POST("/webauthn/register", router.middlewareSessionUser, router.middlewareWebauthn, router.handlerPasskeyValidateCreateChallengeResponse)
-	ginrouter.GET("/webauthn/login", router.middlewareWebauthn, router.handlerPasskeyLoginChallenge)
-	ginrouter.POST("/webauthn/login", router.middlewareWebauthn, router.handlerPasskeyLoginChallengeResponse)
-	ginrouter.NoRoute(gin.WrapH(router.StaticHandler))
 
 	return ginrouter
 }

@@ -2,7 +2,7 @@ package templates
 
 import "github.com/halkeye/omnitar/internal/models"
 
-templ AccountMyPage(account *models.Account, tokens []*models.Token, credentials []*models.WebAuthnCredential) {
+templ AccountMyPage(account *models.Account, tokens []*models.Token) {
 	@BaseLayout() {
 		<script type="module" src="/account/{ account.ID }/webcomponent.js"></script>
 		<h2>Account { account.ID.String() }</h2>
@@ -22,23 +22,6 @@ templ AccountMyPage(account *models.Account, tokens []*models.Token, credentials
 				<tr>
 					<td>{ token.Origin }</td>
 					<td>{ token.OriginID }</td>
-					<td>
-						<wa-button variant="danger" data-method="delete" data-confirm="really delete?" href="/auth/token/{ token.ID }">Delete</wa-button>
-					</td>
-				</tr>
-			}
-		</table>
-		<h3>
-			Passkeys 
-			(
-			<a id="add-passkey" href="#"><wa-icon name="plus"></wa-icon><wa-icon name="key"></wa-icon></a>
-			)
-		</h3>
-		<script>document.querySelector('#add-passkey').addEventListener("click", webauthnRegisterStart)</script>
-		<table style="padding: 15px">
-			for _, token := range credentials {
-				<tr>
-					<td>{ token.DisplayName() }</td>
 					<td>
 						<wa-button variant="danger" data-method="delete" data-confirm="really delete?" href="/auth/token/{ token.ID }">Delete</wa-button>
 					</td>
