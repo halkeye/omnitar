@@ -9,7 +9,7 @@ import (
 )
 
 type RoundTripper struct {
-	logger *logrus.Logger
+	Logger *logrus.Logger
 }
 
 func (t RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -24,7 +24,7 @@ func (t RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		req.Body = io.NopCloser(bytes.NewReader(reqBody))
 	}
-	t.logger.WithFields(logrus.Fields{
+	t.Logger.WithFields(logrus.Fields{
 		"req.method":        req.Method,
 		"req.body":          string(reqBody),
 		"req.url":           req.URL.String(),
@@ -44,7 +44,7 @@ func (t RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 	}
-	t.logger.WithField("resp.status", resp.Status).WithField("resp.body", string(respBody)).Debug("got response")
+	t.Logger.WithField("resp.status", resp.Status).WithField("resp.body", string(respBody)).Debug("got response")
 	// Do work after the response is received
 
 	return resp, err

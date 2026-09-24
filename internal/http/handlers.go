@@ -1,18 +1,27 @@
 package api
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
-
-	"github.com/gin-contrib/location/v2"
-	"github.com/gin-contrib/sessions"
-	"github.com/google/uuid"
-	"github.com/halkeye/omnitar/internal/directory"
-	"github.com/halkeye/omnitar/internal/models"
-	"gorm.io/gorm"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-webauthn/webauthn/protocol"
+	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
+
+	"gorm.io/gorm"
+
+	"github.com/halkeye/omnitar/internal/directory"
+	"github.com/halkeye/omnitar/internal/http/gintemplrenderer"
+	"github.com/halkeye/omnitar/internal/models"
+	"github.com/halkeye/omnitar/internal/sessions"
+	"github.com/halkeye/omnitar/internal/templates"
 )
 
 func (router *Deps) healthzHandler(c *gin.Context) {
@@ -21,63 +30,59 @@ func (router *Deps) healthzHandler(c *gin.Context) {
 
 // profileHandler serves Gravatar-style profile JSON for a known
 // profileIdentifier (MD5 or SHA256 hash of a normalized email).
-func (router *Deps) profileHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ll := router.Logger.WithField("slackOrgId", c.Param("slackOrgId"))
-		source := router.Config.Source(c.Param("slackOrgId"))
-		if source == nil {
-			ll.Debug("unknown Slack org ID")
-			c.Status(http.StatusNotFound)
-			return
-		}
-
-		p, err := source.Lookup(c.Request.Context(), c.Param("profileIdentifier"))
-		ll = ll.WithField("profileIdentifier", c.Param("profileIdentifier"))
-		if err != nil {
-			ll.Debug("error fetching profile")
-			c.Error(err)
-			return
-		}
-		if p.Email == "" {
-			ll.Debug("profile not found")
-			c.Status(http.StatusNotFound)
-			return
-		}
-
-		c.JSON(http.StatusOK, p)
+func (router *Deps) profileHandler(c *gin.Context) {
+	ll := router.Logger.WithField("slackOrgId", c.Param("slackOrgId"))
+	source := router.Config.Source(c.Param("slackOrgId"))
+	if source == nil {
+		ll.Debug("unknown Slack org ID")
+		c.Status(http.StatusNotFound)
+		return
 	}
+
+	p, err := source.Lookup(c.Request.Context(), c.Param("profileIdentifier"))
+	ll = ll.WithField("profileIdentifier", c.Param("profileIdentifier"))
+	if err != nil {
+		ll.Debug("error fetching profile")
+		c.Error(err)
+		return
+	}
+	if p.Email == "" {
+		ll.Debug("profile not found")
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	c.JSON(http.StatusOK, p)
 }
 
 // avatarHandler serves a Gravatar-style avatar lookup: a known
 // profileIdentifier 302s to the cached Slack avatar URL; an unknown one
 // honors the Gravatar ?d= convention (d=404 -> 404, anything else -> the
 // bundled default silhouette).
-func (router *Deps) avatarHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		source := router.Config.Source(c.Param("slackOrgId"))
-		if source == nil {
+func (router *Deps) avatarHandler(c *gin.Context) {
+	source := router.Config.Source(c.Param("slackOrgId"))
+	if source == nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	p, err := source.Lookup(c.Request.Context(), c.Param("profileIdentifier"))
+	if err != nil {
+		c.Error(err)
+		return
+	}
+	if p.Email == "" || p.AvatarURL == "" {
+		if c.Query("d") == "404" {
 			c.Status(http.StatusNotFound)
 			return
 		}
 
-		p, err := source.Lookup(c.Request.Context(), c.Param("profileIdentifier"))
-		if err != nil {
-			c.Error(err)
-			return
-		}
-		if p.Email == "" || p.AvatarURL == "" {
-			if c.Query("d") == "404" {
-				c.Status(http.StatusNotFound)
-				return
-			}
-
-			c.Header("Cache-Control", "public, max-age=3600, no-transform")
-			c.Data(http.StatusOK, "image/svg+xml", router.DefaultAvatar)
-			return
-		}
-
-		c.Redirect(http.StatusFound, p.AvatarURL)
+		c.Header("Cache-Control", "public, max-age=3600, no-transform")
+		c.Data(http.StatusOK, "image/svg+xml", router.DefaultAvatar)
+		return
 	}
+
+	c.Redirect(http.StatusFound, p.AvatarURL)
 }
 
 func (router *Deps) slackInstallHandler() func(c *gin.Context) {
@@ -119,129 +124,392 @@ func (router *Deps) slackInstallHandler() func(c *gin.Context) {
 	}
 }
 
-func (router *Deps) handlerIndexPage() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		session := sessions.Default(c)
-
-		baseURL := location.Get(c)
-		baseURL.Path = "/"
-
-		flashes := session.Flashes()
-		session.Save()
-
-		c.HTML(http.StatusOK, "index.tmpl", gin.H{"baseURL": baseURL, "Flashes": flashes})
-	}
+func (router *Deps) handlerIndexPage(c *gin.Context) {
+	r := gintemplrenderer.New(c.Request.Context(), http.StatusOK, templates.Index())
+	c.Render(http.StatusOK, r)
 }
 
-func (router *Deps) handlerAuthPage() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		session := sessions.Default(c)
+func (router *Deps) handlerMyAccountPage(c *gin.Context) {
+	var err error
+	dbAccount := getTyped[models.Account](c, "account")
 
-		baseURL := location.Get(c)
-		baseURL.Path = "/"
+	tokens, err := gorm.G[*models.Token](router.Config.Database()).Where(models.Token{AccountUUID: new(dbAccount.ID)}).Find(c.Request.Context())
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to load tokens: %w", err))
+		return
+	}
 
-		accountID := session.Get("account_id")
-		if accountID == nil {
-			router.Logger.Debug("No account_id in session, redirecting to login")
-			session.AddFlash("You must log in to view this page.")
-			err := session.Save()
-			if err != nil {
-				router.Logger.WithError(err).Error("Failed to save session")
-			}
+	credentials, err := gorm.G[*models.WebAuthnCredential](router.Config.Database()).Where(models.Token{AccountUUID: new(dbAccount.ID)}).Find(c.Request.Context())
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to load webauthn credentials: %w", err))
+		return
+	}
 
-			c.Redirect(http.StatusFound, "/")
-			return
-		}
+	r := gintemplrenderer.New(c.Request.Context(), http.StatusOK, templates.AccountMyPage(&dbAccount, tokens, credentials))
+	c.Render(http.StatusOK, r)
+}
 
+func (router *Deps) handlerAuthSigninPage(c *gin.Context) {
+	r := gintemplrenderer.New(c.Request.Context(), http.StatusOK, templates.AuthSigninPage())
+	c.Render(http.StatusOK, r)
+}
+
+func (router *Deps) handlerAuthRegisterPage(c *gin.Context) {
+	session := sessions.Default(c)
+	sessions.Set(session, "account_id", "83334a23-7a1d-463b-8830-4d0b9400703a")
+	sessions.MustSave(session)
+	c.Redirect(http.StatusFound, "/account/my")
+	return
+
+	var dbAccount models.Account
+	err := gorm.G[models.Account](router.Config.Database()).Create(c.Request.Context(), &dbAccount)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to create account: %w", err))
+		return
+	}
+
+	// session := sessions.Default(c)
+	// sessions.Set(session, "account_id", dbAccount.ID.String())
+	// sessions.MustSave(session)
+	// c.Redirect(http.StatusFound, "/account/my")
+
+	r := gintemplrenderer.New(c.Request.Context(), http.StatusOK, templates.AuthRegisterPage(&dbAccount))
+	c.Render(http.StatusOK, r)
+}
+
+func (router *Deps) handlerAuthLogout(c *gin.Context) {
+	session := sessions.Default(c)
+	session.Clear()
+	session.AddFlash("logged out")
+	sessions.MustSave(session)
+	c.Redirect(http.StatusFound, "/")
+}
+
+func (router *Deps) webcomponentHandler(c *gin.Context) {
+	c.Request.URL.Path = "/webcomponent.js"
+	router.StaticHandler.ServeHTTP(c.Writer, c.Request)
+}
+
+func (router *Deps) profileHandler2(c *gin.Context) {
+	account := getTyped[models.Account](c, "account")
+	token := account.GetTokenForSource("slack")
+	if token == nil {
+		router.Logger.WithField("accountId", account.ID).Debug("no slack token for account")
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	source := router.Config.Source(token.OriginID)
+	if source == nil {
+		router.Logger.WithField("slackOrgId", token.OriginID).Debug("unknown Slack org ID")
+		c.Status(http.StatusNotFound)
+		return
+	}
+	ll := router.Logger.WithField("slackOrgId", token.OriginID)
+
+	p, err := source.Lookup(c.Request.Context(), c.Param("profileIdentifier"))
+	ll = ll.WithField("profileIdentifier", c.Param("profileIdentifier"))
+	if err != nil {
+		ll.Debug("error fetching profile")
+		c.Error(err)
+		return
+	}
+	if p.Email == "" {
+		ll.Debug("profile not found")
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	c.JSON(http.StatusOK, p)
+}
+
+func (router *Deps) deleteTokenHandler(c *gin.Context) {
+	session := sessions.Default(c)
+
+	dbAccount := getTyped[models.Account](c, "account")
+
+	tokenID := c.Param("token")
+	if tokenID == "" {
+		router.Logger.Debug("No token ID provided")
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	_, err := gorm.G[models.Token](router.Config.Database()).Where(models.Token{ID: uuid.MustParse(tokenID), AccountUUID: new(dbAccount.ID)}).Delete(c.Request.Context())
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to delete token: %w", err))
+		return
+	}
+
+	session.AddFlash("Token deleted successfully.")
+	c.Status(http.StatusNoContent)
+}
+
+func (router *Deps) handlerPasskeyCreateChallenge(c *gin.Context) {
+	w := getTyped[*webauthn.WebAuthn](c, "webauthn")
+	dbAccount := getTyped[models.Account](c, "account")
+	session := sessions.Default(c)
+
+	var (
+		err      error
+		creation *protocol.CredentialCreation
+		s        *webauthn.SessionData
+	)
+
+	opts := []webauthn.RegistrationOption{
+		webauthn.WithResidentKeyRequirement(protocol.ResidentKeyRequirementRequired),
+		webauthn.WithExclusions(webauthn.Credentials(dbAccount.WebAuthnCredentials()).CredentialDescriptors()),
+		webauthn.WithExtensions(webauthn.WithExtensionCredProps()),
+	}
+
+	if creation, s, err = w.BeginMediatedRegistration(&dbAccount, protocol.MediationDefault, opts...); err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	// Crude example saving the session data securely to be loaded in the finish step of the register action. This
+	// should be stored in such a way that the user and user agent has no access to it. For example using an opaque
+	// session cookie.
+	sessions.Set(session, "webauthn_passkey", s)
+	sessions.MustSave(session)
+
+	c.JSON(http.StatusOK, creation)
+}
+
+func (router *Deps) handlerPasskeyValidateCreateChallengeResponse(c *gin.Context) {
+	w := getTyped[*webauthn.WebAuthn](c, "webauthn")
+	dbAccount := getTyped[models.Account](c, "account")
+	session := sessions.Default(c)
+
+	s := sessions.Get[*webauthn.SessionData](session, "webauthn_passkey")
+	if s == nil {
+		session.AddFlash("No session data.")
+		c.Redirect(http.StatusFound, "/")
+		return
+	}
+
+	credential, err := w.FinishRegistration(&dbAccount, *s, c.Request)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	err = gorm.G[models.WebAuthnCredential](router.Config.Database()).Create(c.Request.Context(), &models.WebAuthnCredential{
+		ID:          credential.ID,
+		AccountUUID: dbAccount.ID,
+		Account:     dbAccount,
+		Credential:  *credential,
+	})
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	c.Status(http.StatusOK)
+}
+
+func (router *Deps) handlerPasskeyLoginChallenge(c *gin.Context) {
+	w := getTyped[*webauthn.WebAuthn](c, "webauthn")
+	session := sessions.Default(c)
+
+	assertion, s, err := w.BeginDiscoverableMediatedLogin(protocol.MediationDefault)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	sessions.Set(session, "passkey", s)
+	sessions.MustSave(session)
+
+	c.JSON(http.StatusOK, assertion)
+}
+
+func (router *Deps) handlerPasskeyLoginChallengeResponse(c *gin.Context) {
+	w := getTyped[*webauthn.WebAuthn](c, "webauthn")
+	session := sessions.Default(c)
+
+	s := sessions.Get[*webauthn.SessionData](session, "passkey")
+	if s == nil {
+		session.AddFlash("No session data.")
+		c.Redirect(http.StatusFound, "/")
+		return
+	}
+
+	loadUserPasskey := func(rawID, userHandle []byte) (user webauthn.User, err error) {
+		router.Logger.WithFields(logrus.Fields{"raw_id": rawID, "user_handle": userHandle}).Debug("loadUserPasskey")
 		dbAccount, err := gorm.G[models.Account](router.Config.Database()).
-			Preload("Tokens", nil).
-			Where(models.Account{ID: uuid.MustParse(accountID.(string))}).
+			Preload("WebAuthnCredential", nil).
+			Where(models.WebAuthnCredential{ID: rawID}).
 			First(c.Request.Context())
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to retrieve account: %w", err))
-			return
-		}
-
-		flashes := session.Flashes()
-		session.Save()
-
-		c.HTML(http.StatusOK, "auth.tmpl", gin.H{"baseURL": baseURL, "Account": dbAccount, "Flashes": flashes})
+		return &dbAccount, err
 	}
+
+	validatedUser, validatedCredential, err := w.FinishPasskeyLogin(loadUserPasskey, *s, c.Request)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	// This type assertion is necessary to perform the necessary updates.
+	dbAccount, ok := validatedUser.(*models.Account)
+	if !ok {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
+	_, err = gorm.G[models.WebAuthnCredential](router.Config.Database()).
+		Where(models.WebAuthnCredential{}).
+		Updates(c.Request.Context(), models.WebAuthnCredential{
+			AccountUUID: dbAccount.ID,
+			Account:     *dbAccount,
+			Credential:  *validatedCredential,
+		})
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to save source connection: %w", err))
+	}
+	c.Status(http.StatusOK)
 }
 
-func (router *Deps) webcomponentHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Request.URL.Path = "/webcomponent.js"
-		router.StaticHandler.ServeHTTP(c.Writer, c.Request)
+func (router *Deps) handlerProvider(c *gin.Context) {
+	session := sessions.Default(c)
+	state, err := generateRandomState()
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Unable to generate state value")
+		return
 	}
+
+	providerFunc := router.providers[models.OAuthProvider(c.Param("provider"))]
+	if providerFunc == nil {
+		c.AbortWithError(http.StatusBadRequest, errors.New("unsupported provider"))
+		return
+	}
+
+	sessions.Set(session, "state_"+state, time.Now().Format(time.RFC3339))
+	sessions.MustSave(session)
+
+	oauthConfig := providerFunc(c)
+	authURL := oauthConfig.AuthCodeURL(state)
+	c.Redirect(http.StatusFound, authURL)
 }
 
-func (router *Deps) profileHandler2() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		account := getTyped[models.Account](c, "account")
-		token := account.GetTokenForSource("slack")
-		if token == nil {
-			router.Logger.WithField("accountId", account.ID).Debug("no slack token for account")
-			c.Status(http.StatusNotFound)
-			return
-		}
+func (router *Deps) handlerProviderCallback(c *gin.Context) {
+	session := sessions.Default(c)
 
-		source := router.Config.Source(token.OriginID)
-		if source == nil {
-			router.Logger.WithField("slackOrgId", token.OriginID).Debug("unknown Slack org ID")
-			c.Status(http.StatusNotFound)
-			return
-		}
-		ll := router.Logger.WithField("slackOrgId", token.OriginID)
-
-		p, err := source.Lookup(c.Request.Context(), c.Param("profileIdentifier"))
-		ll = ll.WithField("profileIdentifier", c.Param("profileIdentifier"))
-		if err != nil {
-			ll.Debug("error fetching profile")
-			c.Error(err)
-			return
-		}
-		if p.Email == "" {
-			ll.Debug("profile not found")
-			c.Status(http.StatusNotFound)
-			return
-		}
-
-		c.JSON(http.StatusOK, p)
+	providerFunc := router.providers[models.OAuthProvider(c.Param("provider"))]
+	if providerFunc == nil {
+		c.AbortWithError(http.StatusBadRequest, errors.New("unsupported provider"))
+		return
 	}
-}
 
-func (router *Deps) deleteTokenHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		session := sessions.Default(c)
-		// FIXME - middlewareSessionAccount
-		accountID, ok := session.Get("account_id").(string)
-		if !ok || accountID == "" {
-			router.Logger.Debug("No account_id in session, redirecting to login")
-			session.AddFlash("You must log in to view this page.")
-			err := session.Save()
-			if err != nil {
-				router.Logger.WithError(err).Error("Failed to save session")
+	oauth2Config := providerFunc(c)
+
+	// Retrieve and verify state
+	state := c.Query("state")
+	stateVal := sessions.Get[string](session, "state_"+state)
+	router.Logger.WithField("state", stateVal).Debug("OAuth callback received")
+	if stateVal == "" {
+		c.AbortWithError(http.StatusBadRequest, errors.New("invalid state value"))
+		return
+	}
+	session.Delete("state_" + state)
+	sessions.MustSave(session)
+
+	// Retrieve code
+	code := c.Query("code")
+	if code == "" {
+		c.String(http.StatusBadRequest, "Authorization code not provided")
+		return
+	}
+
+	ctx := c.Request.Context()
+	// rt := MyRoundTripper{logger: router.Logger}
+	// ctx := context.WithValue(c.Request.Context(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	// Exchange code for access token
+	token, err := oauth2Config.Exchange(ctx, code)
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("Unable to exchange access token: %w", err))
+		return
+	}
+
+	accountUUID := sessions.Get[string](session, "account_id")
+
+	router.Logger.WithField("team", token.Extra("team")).Debug("OAuth callback received")
+	dbToken := models.Token{AccountToken: token.AccessToken, ExpiresAt: token.Expiry.Unix(), RefreshToken: token.RefreshToken}
+	switch models.OAuthProvider(c.Param("provider")) {
+	case models.Slack:
+		router.Logger.Info("something")
+
+		for _, field := range []string{"enterprise", "team"} {
+			extra, ok := token.Extra(field).(map[string]any)
+			router.Logger.WithField("field", field).WithField("extra", extra).Debug("Retrieved extra field from token")
+			if !ok {
+				continue
+			}
+			originID, ok := extra["id"].(string)
+			router.Logger.WithField("field", field).WithField("originID", originID).Debug("Retrieved origin ID from extra field")
+			if !ok {
+				continue
 			}
 
-			c.Redirect(http.StatusFound, "/")
-			return
+			dbSlackToken := dbToken
+			dbSlackToken.Origin = "slack"
+			dbSlackToken.OriginID = originID
+			dbToken, err = router.Config.FindOrCreateTokenAndAccount(ctx, accountUUID, dbSlackToken)
+			if err != nil {
+				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to find or create slack token and account: %w", err))
+				return
+			}
 		}
-
-		tokenID := c.Param("token")
-		if tokenID == "" {
-			router.Logger.Debug("No token ID provided")
-			c.Status(http.StatusNotFound)
-			return
-		}
-
-		_, err := gorm.G[models.Token](router.Config.Database()).Where(models.Token{ID: uuid.MustParse(tokenID), AccountUUID: new(uuid.MustParse(accountID))}).Delete(c.Request.Context())
+	case models.Atlassian:
+		router.Logger.Info("something")
+		router.Logger.WithField("token", token).Debug("Retrieved access token")
+		client := oauth2Config.Client(ctx, token)
+		resp, err := client.Get("https://api.atlassian.com/oauth/token/accessible-resources")
 		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to delete token: %w", err))
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("Unable to retrieve user information: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("Unable to read response body: %w", err))
 			return
 		}
 
-		session.AddFlash("Token deleted successfully.")
-		c.Status(http.StatusNoContent)
+		type accessibleResources struct {
+			ID   string `json:"id"`
+			URL  string `json:"url"`
+			Name string `json:"name"`
+		}
+
+		resources := []*accessibleResources{}
+		err = json.Unmarshal(bodyBytes, &resources)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("Unable to unmarshal accessible resources: %w", err))
+			return
+		}
+
+		for _, ar := range resources {
+			dbResourceToken := dbToken
+			dbResourceToken.Origin = "atlassian"
+			dbResourceToken.OriginID = ar.URL
+			dbToken, err = router.Config.FindOrCreateTokenAndAccount(ctx, accountUUID, dbResourceToken)
+			if err != nil {
+				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to find or create atlassian token and account: %w", err))
+				return
+			}
+		}
 	}
+
+	if dbToken.AccountUUID == nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("no account associated with token after OAuth callback"))
+		return
+	}
+
+	sessions.Set(session, "account_id", dbToken.AccountUUID.String())
+	sessions.MustSave(session)
+
+	router.Logger.WithField("account_id", dbToken.AccountUUID).Debug("Saved account ID in session")
+	c.Redirect(http.StatusFound, "/auth")
 }

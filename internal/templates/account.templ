@@ -1,0 +1,49 @@
+package templates
+
+import "github.com/halkeye/omnitar/internal/models"
+
+templ AccountMyPage(account *models.Account, tokens []*models.Token, credentials []*models.WebAuthnCredential) {
+	@BaseLayout() {
+		<script type="module" src="/account/{ account.ID }/webcomponent.js"></script>
+		<h2>Account { account.ID.String() }</h2>
+		<p><copy-paste>&lt;script type=&quot;module&quot; src=&quot;{ BaseURL(ctx) }account/{ account.ID.String() }/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p>
+		<p><omnitar-profile email="slack@gavinmogan.com">gmogan</omnitar-profile></p>
+		<p><omnitar-issue key="HR-2">HR-2</omnitar-issue></p>
+		<h3>
+			Sources 
+			(
+			<a href="/auth/slack"><wa-icon name="plus"></wa-icon><wa-icon name="slack" family="brands"></wa-icon></a>
+			/
+			<a href="/auth/atlassian"><wa-icon name="plus"></wa-icon><wa-icon name="atlassian" family="brands"></wa-icon></a>
+			)
+		</h3>
+		<table style="padding: 15px">
+			for _, token := range tokens {
+				<tr>
+					<td>{ token.Origin }</td>
+					<td>{ token.OriginID }</td>
+					<td>
+						<wa-button variant="danger" data-method="delete" data-confirm="really delete?" href="/auth/token/{ token.ID }">Delete</wa-button>
+					</td>
+				</tr>
+			}
+		</table>
+		<h3>
+			Passkeys 
+			(
+			<a id="add-passkey" href="#"><wa-icon name="plus"></wa-icon><wa-icon name="key"></wa-icon></a>
+			)
+		</h3>
+		<script>document.querySelector('#add-passkey').addEventListener("click", webauthnRegisterStart)</script>
+		<table style="padding: 15px">
+			for _, token := range credentials {
+				<tr>
+					<td>{ token.DisplayName() }</td>
+					<td>
+						<wa-button variant="danger" data-method="delete" data-confirm="really delete?" href="/auth/token/{ token.ID }">Delete</wa-button>
+					</td>
+				</tr>
+			}
+		</table>
+	}
+}

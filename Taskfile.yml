@@ -1,0 +1,62 @@
+version: "3"
+
+output: prefixed
+
+tasks:
+  dev:
+    desc: Run vite, templ generate --watch, and the app (rebuild + rerun on change) together
+    deps:
+      - vite:dev
+      - templ:watch
+      - air
+      # - run:watch
+
+  # `run`'s own `watch`/`sources` are only honored when it's invoked as a
+  # top-level task, not when pulled in via another task's `deps`. Shelling
+  # out to `task run` here gives it a fresh top-level invocation so restarts
+  # on Go file changes actually work inside `task dev`.
+  run:watch:
+    cmds:
+      - task run
+
+  vite:dev:
+    desc: Run vite dev server for the webcomponent
+    cmds:
+      - npx vite --clearScreen=false
+
+  templ:watch:
+    desc: Watch and regenerate templ files
+    cmds:
+      - go tool templ generate -watch -path internal/templates
+
+  templ:proxy:
+    desc: "generate go files from templ and restart binary"
+    cmds:
+      - go tool templ generate -path internal/templates --watch --proxy="http://localhost:8081" --proxyport 8080 --open-browser=false
+
+  run:
+    desc: Run the server, restarting on Go file changes, with humanlog-formatted output
+    watch: true
+    method: none
+    env:
+      PORT: 8081
+    sources:
+      - "cmd/**/*.go"
+      - "internal/**/*.go"
+    cmds:
+      - go build -o ./tmp/main ./cmd/profile-http
+      - ./tmp/main | humanlog
+
+  air:
+    method: none
+    env:
+      PORT: 8080
+    cmds:
+      - air | humanlog
+
+  air:proxy:
+    method: none
+    env:
+      PORT: 8081
+    cmds:
+      - air -proxy.app_port=8081 -proxy.enabled=true -proxy.proxy_port=8080 | humanlog

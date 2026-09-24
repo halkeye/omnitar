@@ -1,0 +1,28 @@
+package templates
+
+import "github.com/halkeye/omnitar/internal/models"
+
+templ AuthSigninPage() {
+	@BaseLayout() {
+		<div>
+			<wa-button variant="info">Sign in with a passkey</wa-button>
+			<script>document.querySelector('wa-button').addEventListener("click", webauthnSigninStart)</script>
+		</div>
+	}
+}
+
+templ AuthRegisterPage(account *models.Account) {
+	@BaseLayout() {
+		<div>
+			<label for="username">Username:</label>
+			<input
+				name="username"
+				readonly
+				value={ account.ID.String() }
+				id="loginform.username"
+				autocomplete="username webauthn"
+			/>
+		</div>
+		<script>webauthnRegisterStart()</script>
+	}
+}

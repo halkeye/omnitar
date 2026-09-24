@@ -5,24 +5,23 @@
 package api
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
+	"context"
 	"net/http"
-	"time"
 
 	"github.com/gin-contrib/location/v2"
-	"github.com/gin-contrib/sessions"
 	gormsessions "github.com/gin-contrib/sessions/gorm"
 	"github.com/gin-gonic/gin"
-	"golang.org/x/oauth2"
-
+	"github.com/m4gshm/gollections/slice"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/oauth2"
 
 	"github.com/halkeye/omnitar/internal/config"
+	"github.com/halkeye/omnitar/internal/debugroundtripper"
+	"github.com/halkeye/omnitar/internal/http/gintemplrenderer"
 	"github.com/halkeye/omnitar/internal/models"
+	"github.com/halkeye/omnitar/internal/sessions"
+	"github.com/halkeye/omnitar/internal/templates"
 )
 
 // Deps are the dependencies NewRouter needs to build the full route table.
@@ -119,6 +118,24 @@ func (router *Deps) getAtlassianOauth(c *gin.Context) *oauth2.Config {
 	}
 }
 
+// ErrorHandler captures errors and returns a consistent JSON error response
+func ErrorHandler(log *logrus.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next() // Process the request first
+
+		// Check if any errors were added to the context
+		if len(c.Errors) > 0 {
+			err := c.Errors.Last().Err
+
+			log.WithError(err).Error("http error")
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+		}
+	}
+}
+
 // NewRouter builds the full route table for the service.
 func (router *Deps) NewHTTPHandler() http.Handler {
 	if router.Logger != nil {
@@ -135,206 +152,81 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 
 	store := gormsessions.NewStore(router.Config.Database(), true, []byte(router.Config.SessionKey()))
 	ginrouter := gin.New()
-	//   sub, _ := fs.Sub(tmplFS, "templates")
-	// r.LoadHTMLFS(http.FS(sub), "**/*.tmpl")
-	ginrouter.LoadHTMLGlob("templates/*.tmpl")
+
+	ginHtmlRenderer := ginrouter.HTMLRender
+	ginrouter.HTMLRender = &gintemplrenderer.HTMLTemplRenderer{FallbackHtmlRenderer: ginHtmlRenderer}
+
 	ginrouter.Use(
+		ErrorHandler(router.Logger),
 		location.Default(),
 		sessions.Sessions("mysession", store),
 		router.requestLogger(),
 		// router.recovery(),
-		gin.RecoveryWithWriter(router.Logger.Writer()),
+		gin.Recovery(),
 		router.noTransform(),
 	)
+
+	ginrouter.Use(func(c *gin.Context) {
+		client := http.Client{
+			Transport: debugroundtripper.RoundTripper{Logger: router.Logger},
+		}
+		c.Request = c.Request.WithContext(
+			context.WithValue(c.Request.Context(), oauth2.HTTPClient, &client),
+		)
+	})
+
+	ginrouter.Use(func(c *gin.Context) {
+		ctx := c.Request.Context()
+		session := sessions.Default(c)
+
+		baseURL := location.Get(c)
+		baseURL.Path = ""
+
+		// Create a context variable that inherits from a parent, and sets the value "test".
+		ctx = templates.SetBaseURL(ctx, baseURL.String())
+
+		flashes := session.Flashes()
+		sessions.MustSave(session)
+
+		ctx = templates.AddFlash(ctx, slice.Convert(flashes, func(flash any) string { return flash.(string) })...)
+		c.Request = c.Request.WithContext(ctx)
+	})
+
 	ginrouter.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	ginrouter.GET("/healthz", router.healthzHandler)
 	ginrouter.Static("/js", "./static/js")
 	ginrouter.Static("/css", "./static/css")
 
-	ginrouter.GET("/", router.handlerIndexPage())
-	ginrouter.GET("/auth", router.handlerAuthPage())
-	ginrouter.DELETE("/auth/:token", router.deleteTokenHandler())
+	ginrouter.GET("/", router.handlerIndexPage)
 
-	ginrouter.GET("/auth/:provider", func(c *gin.Context) {
-		session := sessions.Default(c)
-		state, err := generateRandomState()
-		if err != nil {
-			c.String(http.StatusInternalServerError, "Unable to generate state value")
-			return
-		}
+	// FIXME - move to source
+	ginrouter.GET("/auth/:provider", router.handlerProvider)
+	ginrouter.GET("/auth/:provider/callback", router.handlerProviderCallback)
 
-		providerFunc := router.providers[models.OAuthProvider(c.Param("provider"))]
-		if providerFunc == nil {
-			c.AbortWithError(http.StatusBadRequest, errors.New("unsupported provider"))
-			return
-		}
-
-		session.Set("state_"+state, time.Now().Format(time.RFC3339))
-		err = session.Save()
-		if err != nil {
-			router.Logger.WithError(err).Error("Failed to save session")
-		}
-
-		oauthConfig := providerFunc(c)
-		authURL := oauthConfig.AuthCodeURL(state)
-		c.Redirect(http.StatusFound, authURL)
-	})
-
-	ginrouter.GET("/auth/:provider/callback", func(c *gin.Context) {
-		session := sessions.Default(c)
-
-		providerFunc := router.providers[models.OAuthProvider(c.Param("provider"))]
-		if providerFunc == nil {
-			c.AbortWithError(http.StatusBadRequest, errors.New("unsupported provider"))
-			return
-		}
-
-		oauth2Config := providerFunc(c)
-
-		// Retrieve and verify state
-		state := c.Query("state")
-		router.Logger.WithField("state", session.Get("state_"+state)).Debug("OAuth callback received")
-		if val, ok := session.Get("state_" + state).(string); !ok || val == "" {
-			c.AbortWithError(http.StatusBadRequest, errors.New("invalid state value"))
-			return
-		}
-		session.Delete("state_" + state)
-		err := session.Save()
-		if err != nil {
-			router.Logger.WithError(err).Error("Failed to save session")
-		}
-
-		// Retrieve code
-		code := c.Query("code")
-		if code == "" {
-			c.String(http.StatusBadRequest, "Authorization code not provided")
-			return
-		}
-
-		ctx := c.Request.Context()
-		// rt := MyRoundTripper{logger: router.Logger}
-		// ctx := context.WithValue(c.Request.Context(), oauth2.HTTPClient, &http.Client{Transport: rt})
-		// Exchange code for access token
-		token, err := oauth2Config.Exchange(ctx, code)
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("Unable to exchange access token: %w", err))
-			return
-		}
-
-		accountUUID := ""
-		if val, ok := session.Get("account_id").(string); ok {
-			accountUUID = val
-		}
-
-		router.Logger.WithField("team", token.Extra("team")).Debug("OAuth callback received")
-		dbToken := models.Token{AccountToken: token.AccessToken, ExpiresAt: token.Expiry.Unix(), RefreshToken: token.RefreshToken}
-		switch models.OAuthProvider(c.Param("provider")) {
-		case models.Slack:
-			router.Logger.Info("something")
-
-			for _, field := range []string{"enterprise", "team"} {
-				extra, ok := token.Extra(field).(map[string]any)
-				router.Logger.WithField("field", field).WithField("extra", extra).Debug("Retrieved extra field from token")
-				if !ok {
-					continue
-				}
-				originID, ok := extra["id"].(string)
-				router.Logger.WithField("field", field).WithField("originID", originID).Debug("Retrieved origin ID from extra field")
-				if !ok {
-					continue
-				}
-
-				dbSlackToken := dbToken
-				dbSlackToken.Origin = "slack"
-				dbSlackToken.OriginID = originID
-				dbToken, err = router.Config.FindOrCreateTokenAndAccount(ctx, accountUUID, dbSlackToken)
-				if err != nil {
-					c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to find or create slack token and account: %w", err))
-					return
-				}
-			}
-		case models.Atlassian:
-			router.Logger.Info("something")
-			router.Logger.WithField("token", token).Debug("Retrieved access token")
-			client := oauth2Config.Client(ctx, token)
-			resp, err := client.Get("https://api.atlassian.com/oauth/token/accessible-resources")
-			if err != nil {
-				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("Unable to retrieve user information: %w", err))
-				return
-			}
-			defer resp.Body.Close()
-
-			bodyBytes, err := io.ReadAll(resp.Body)
-			if err != nil {
-				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("Unable to read response body: %w", err))
-				return
-			}
-
-			type accessibleResources struct {
-				ID   string `json:"id"`
-				URL  string `json:"url"`
-				Name string `json:"name"`
-			}
-
-			resources := []*accessibleResources{}
-			err = json.Unmarshal(bodyBytes, &resources)
-			if err != nil {
-				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("Unable to unmarshal accessible resources: %w", err))
-				return
-			}
-
-			for _, ar := range resources {
-				dbResourceToken := dbToken
-				dbResourceToken.Origin = "atlassian"
-				dbResourceToken.OriginID = ar.URL
-				dbToken, err = router.Config.FindOrCreateTokenAndAccount(ctx, accountUUID, dbResourceToken)
-				if err != nil {
-					c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to find or create atlassian token and account: %w", err))
-					return
-				}
-			}
-		}
-
-		if dbToken.AccountUUID == nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("no account associated with token after OAuth callback"))
-			return
-		}
-
-		session.Set("account_id", dbToken.AccountUUID.String())
-		err = session.Save()
-		if err != nil {
-			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to save session: %w", err))
-			return
-		}
-
-		router.Logger.WithField("account_id", dbToken.AccountUUID).Debug("Saved account ID in session")
-		c.Redirect(http.StatusFound, "/auth")
-	})
-
-	ginrouter.GET("/auth/logout", func(c *gin.Context) {
-		session := sessions.Default(c)
-		session.Clear()
-		session.AddFlash("logged out")
-		err := session.Save()
-		if err != nil {
-			router.Logger.WithError(err).Error("Failed to save session")
-		}
-		c.Redirect(http.StatusFound, "/")
-	})
+	ginrouter.DELETE("/auth/token/:token", router.middlewareSessionUser, router.deleteTokenHandler)
+	ginrouter.GET("/auth/register", router.handlerAuthRegisterPage)
+	ginrouter.GET("/auth/login", router.handlerAuthSigninPage)
+	ginrouter.GET("/auth/logout", router.middlewareSessionUser, router.handlerAuthLogout)
 
 	if router.Config.SlackClientID() != "" && router.Config.SlackClientSecret() != "" {
 		ginrouter.GET("/slack/auth", router.slackInstallHandler())
 	}
 
-	ginrouter.GET("/slack/:slackOrgId/profiles/:profileIdentifier", router.cors(), router.profileHandler())
-	ginrouter.OPTIONS("/slack/:slackOrgId/profiles/:profileIdentifier", router.cors())
-	ginrouter.GET("/slack/:slackOrgId/avatar/:profileIdentifier", router.cors(), router.avatarHandler())
-	ginrouter.OPTIONS("/slack/:slackOrgId/avatar/:profileIdentifier", router.cors())
-	ginrouter.GET("/slack/:slackOrgId/webcomponent.js", router.cors(), router.webcomponentHandler())
+	ginrouter.GET("/slack/:slackOrgId/profiles/:profileIdentifier", router.cors, router.profileHandler)
+	ginrouter.OPTIONS("/slack/:slackOrgId/profiles/:profileIdentifier", router.cors)
+	ginrouter.GET("/slack/:slackOrgId/avatar/:profileIdentifier", router.cors, router.avatarHandler)
+	ginrouter.OPTIONS("/slack/:slackOrgId/avatar/:profileIdentifier", router.cors)
+	ginrouter.GET("/slack/:slackOrgId/webcomponent.js", router.cors, router.webcomponentHandler)
 
-	ginrouter.GET("/account/:accountUUID/profiles/:profileIdentifier", router.cors(), router.accountMiddleware(), router.profileHandler2())
-	ginrouter.GET("/account/:accountUUID/avatar/:profileIdentifier", router.cors(), router.avatarHandler())
-	ginrouter.GET("/account/:accountUUID/webcomponent.js", router.cors(), router.webcomponentHandler())
+	ginrouter.GET("/account/my", router.middlewareSessionUser, router.handlerMyAccountPage)
+	ginrouter.GET("/account/:accountUUID/profiles/:profileIdentifier", router.cors, router.accountMiddleware, router.profileHandler2)
+	ginrouter.GET("/account/:accountUUID/avatar/:profileIdentifier", router.cors, router.avatarHandler)
+	ginrouter.GET("/account/:accountUUID/webcomponent.js", router.cors, router.webcomponentHandler)
+
+	ginrouter.GET("/webauthn/register", router.middlewareSessionUser, router.middlewareWebauthn, router.handlerPasskeyCreateChallenge)
+	ginrouter.POST("/webauthn/register", router.middlewareSessionUser, router.middlewareWebauthn, router.handlerPasskeyValidateCreateChallengeResponse)
+	ginrouter.GET("/webauthn/login", router.middlewareWebauthn, router.handlerPasskeyLoginChallenge)
+	ginrouter.POST("/webauthn/login", router.middlewareWebauthn, router.handlerPasskeyLoginChallengeResponse)
 	ginrouter.NoRoute(gin.WrapH(router.StaticHandler))
 
 	return ginrouter

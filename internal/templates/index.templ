@@ -1,0 +1,32 @@
+package templates
+
+templ Index() {
+	@BaseLayout() {
+		<script type="module" src="/slack/E0AFSMB25HU/webcomponent.js"></script>
+		<h2 id="quick-start" class="anchor-heading">Quick Start</h2>
+		<p>Add the following code to your page.</p>
+		<!-- prettier-ignore -->
+		<p><copy-paste>&lt;script type=&quot;module&quot; src=&quot;{ BaseURL(ctx) }/slack/E0AFSMB25HU/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p>
+		<!-- /prettier-ignore -->
+		<p>Replace <mark>E0AFSMB25HU</mark> with your slack team ID</p>
+		<p>Then add a omnitar-card element with an email attribute to your page</p>
+		<!-- prettier-ignore -->
+		<p><copy-paste>&lt;omnitar-card email=&quot;slack@gavinmogan.com&quot;&gt;halkeye&lt;/omnitar-card&gt;</copy-paste></p>
+		<!-- /prettier-ignore -->
+		<h2>Examples</h2>
+		<wa-tab-group>
+			<wa-tab panel="active">Active User</wa-tab>
+			<wa-tab panel="inactive">Invalid/Inactive User</wa-tab>
+			<wa-tab-panel name="active" active>
+				<p>Is successfully able to find a profile for the given email</p>
+				<p><b>Example:</b> <omnitar-card email="slack@gavinmogan.com">halkeye</omnitar-card></p>
+				<p>Assuming that user is on your slack, you should get a nice element with full name and a nice little profile card on hover</p>
+			</wa-tab-panel>
+			<wa-tab-panel name="inactive" active>
+				<p>If no matching profile can be found (bad data, expired, etc)</p>
+				<p><b>Example:</b> <omnitar-card email="fake@fake.com">user1234</omnitar-card></p>
+				<p>Will show the original tag value, but without any popups</p>
+			</wa-tab-panel>
+		</wa-tab-group>
+	}
+}

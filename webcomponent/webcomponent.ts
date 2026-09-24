@@ -15,15 +15,10 @@ import templateHTML from "./webcomponent.html?raw";
 import hoverIntent from "hoverintent";
 
 const SCRIPT_ORIGIN = new URL(import.meta.url).origin;
-const ORG_ID =
-  new URL(import.meta.url).pathname.match("/slack/(\\w+)/")?.[1] ??
-  new URLSearchParams(new URL(import.meta.url).search).get("orgId");
-
-if (!ORG_ID) {
-  alert(
-    "Missing orgId; please add org id to url, ?orgId=... to the script URL, or data-org-id attribute to the script tag",
-  );
-}
+const ACCOUNT_UUID =
+  new URL(import.meta.url).pathname.match("/account/([\\w-]+)/")?.[1] ??
+  new URLSearchParams(new URL(import.meta.url).search).get("accountUUID") ??
+  "";
 
 let templateElm = document.createElement("template");
 templateElm.innerHTML = templateHTML;
@@ -32,54 +27,38 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-async function sha256Hex(input: string) {
-  const data = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+// async function sha256Hex(input: string) {
+//   const data = new TextEncoder().encode(input);
+//   const digest = await crypto.subtle.digest("SHA-256", data);
+//   return Array.from(new Uint8Array(digest))
+//     .map((b) => b.toString(16).padStart(2, "0"))
+//     .join("");
+// }
 
-const emailMap = new Map<string, Promise<Profile | null>>();
-document.addEventListener("omnitar-card:email", (e) => {
-  if (!e.detail) {
-    return;
-  }
-
-  if (!emailMap.has(e.detail)) {
-    emailMap.set(
-      e.detail,
-      (async (email) => {
-        const hash = await sha256Hex(normalizeEmail(email));
-        const res = await fetch(
-          `${SCRIPT_ORIGIN}/slack/${ORG_ID}/profiles/${hash}`,
-        );
+const cache = new Map<string, Promise<Profile | null>>();
+const cachedFetch = async (url: string) => {
+  if (!cache.has(url)) {
+    cache.set(
+      url,
+      (async (url) => {
+        const res = await fetch(url);
         if (res.ok) {
           const profile = await res.json();
           return profile;
         }
         return null;
-      })(e.detail),
+      })(url),
     );
   }
 
-  const getter = emailMap.get(e.detail);
+  const getter = cache.get(url);
   if (!getter) {
-    return;
+    return null;
   }
-  getter.then((profile) => {
-    if (!profile) {
-      return;
-    }
-    document.dispatchEvent(
-      new CustomEvent("omnitar-card:profile", {
-        detail: profile,
-      }),
-    );
-  });
-});
+  return await getter;
+};
 
-class SlackProfileElement extends HTMLElement {
+class OmnitarProfileElement extends HTMLElement {
   private _email: string = "";
   private _profile: Profile | null = null;
   private _hoverIntent: any;
@@ -88,12 +67,13 @@ class SlackProfileElement extends HTMLElement {
 
   attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
     if (name === "email") {
+      newValue = normalizeEmail(newValue);
       if (newValue != this._email) {
-        document.dispatchEvent(
-          new CustomEvent("omnitar-card:email", {
-            detail: newValue,
-          }),
-        );
+        cachedFetch(
+          `${SCRIPT_ORIGIN}/account/${encodeURI(ACCOUNT_UUID)}/profiles/${encodeURI(newValue)}`,
+        ).then((profile) => {
+          this._handleSlackProfileCardProfile(profile);
+        });
       }
       this._email = newValue;
       if (this.shadowRoot) {
@@ -103,19 +83,19 @@ class SlackProfileElement extends HTMLElement {
     }
   }
 
-  private _handleSlackProfileCardProfile = (e: CustomEvent<Profile>) => {
-    if (e.detail.email != this._email) {
+  private _handleSlackProfileCardProfile = (profile: null | Profile) => {
+    this._profile = profile;
+    if (!this._profile) {
       return;
     }
 
-    this._profile = e.detail;
     if (this.shadowRoot) {
       this.shadowRoot
         .querySelector(".display-name slot")!
         .classList.add("hide");
       const displayName = this.shadowRoot.querySelector(".display-name span")!;
       displayName.classList.remove("hide");
-      displayName.textContent = "🪪 " + e.detail.name.toString();
+      displayName.textContent = "🪪 " + this._profile.name.toString();
 
       this.shadowRoot.querySelector(".name")!.textContent =
         this._profile?.name ?? "";
@@ -159,10 +139,6 @@ class SlackProfileElement extends HTMLElement {
         .classList.remove("hide");
     }
     this._hoverIntent = hoverIntent(this, this._show, this._hide);
-    document.addEventListener(
-      "omnitar-card:profile",
-      this._handleSlackProfileCardProfile,
-    );
   }
 
   disconnectedCallback() {
@@ -200,27 +176,10 @@ class Profile {
   } = {};
 }
 
-interface CustomEventMap {
-  "omnitar-card:email": CustomEvent<string>;
-  "omnitar-card:profile": CustomEvent<Profile>;
-}
-
 declare global {
   interface HTMLElementTagNameMap {
-    "omnitar-card": SlackProfileElement;
-  }
-  interface Document {
-    //adds definition to Document, but you can do the same with HTMLElement
-    addEventListener<K extends keyof CustomEventMap>(
-      type: K,
-      listener: (this: Document, ev: CustomEventMap[K]) => void,
-    ): void;
-    dispatchEvent<K extends keyof CustomEventMap>(
-      ev: CustomEventMap[K],
-    ): boolean;
+    "omnitar-profile": OmnitarProfileElement;
   }
 }
 
-window.customElements.define("omnitar-card", SlackProfileElement);
-
-export default SlackProfileElement;
+window.customElements.define("omnitar-profile", OmnitarProfileElement);

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"reflect"
 	"sync"
 	"time"
@@ -18,10 +19,10 @@ import (
 	"github.com/halkeye/omnitar/internal/refresh"
 
 	"github.com/caarlos0/env/v11"
+	"github.com/glebarez/sqlite"
 	"github.com/sirupsen/logrus"
 
 	"gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -52,36 +53,44 @@ func (c *config) SetupDB(ctx context.Context) error {
 	var err error
 	c.logger.Debug("connecting to database")
 	// Migrate the schema
-	err = c.Database_.AutoMigrate(&models.SourceConnection{})
+	err = c.Database_.AutoMigrate(&models.SourceConnection{}, &models.Account{}, &models.Token{}, &models.WebAuthnCredential{})
 	if err != nil {
-		return fmt.Errorf("failed to migrate SourceConnection schema: %w", err)
+		return fmt.Errorf("failed to migrate schema: %w", err)
 	}
-	err = c.Database_.AutoMigrate(&models.Account{})
-	if err != nil {
-		return fmt.Errorf("failed to migrate Account schema: %w", err)
-	}
-	err = c.Database_.AutoMigrate(&models.Token{})
-	if err != nil {
-		return fmt.Errorf("failed to migrate Token schema: %w", err)
-	}
+	c.logger.Debug("migration done")
 
-	sourceConnections, err := gorm.G[models.SourceConnection](c.Database_).Find(ctx)
+	accounts, err := gorm.G[models.Account](c.Database_).Find(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to fetch source connections from database: %w", err)
+		return fmt.Errorf("failed to fetch accounts from database: %w", err)
 	}
-	for _, sourceConnection := range sourceConnections {
-		if sourceConnection.Type == "slack" {
-			if err := c.AddSource(sourceConnection.TeamID, directory.NewSlackSource(c.logger, sourceConnection.TeamID, sourceConnection.Token)); err != nil {
-				return fmt.Errorf("failed to start refresher for Slack source %s: %w", sourceConnection.TeamID, err)
-			}
+	for _, account := range accounts {
+		if err := account.BeforeCreate(c.Database_); err != nil {
+			return fmt.Errorf("failed to run BeforeCreate for account %s: %w", account.ID, err)
+		}
+
+		if _, err := gorm.G[models.Account](c.Database_).Updates(ctx, account); err != nil {
+			return fmt.Errorf("failed to update account %s: %w", account.ID, err)
 		}
 	}
+
+	// sourceConnections, err := gorm.G[models.SourceConnection](c.Database_).Find(ctx)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to fetch source connections from database: %w", err)
+	// }
+	// for _, sourceConnection := range sourceConnections {
+	// 	if sourceConnection.Type == "slack" {
+	// 		if err := c.AddSource(sourceConnection.TeamID, directory.NewSlackSource(c.logger, sourceConnection.TeamID, sourceConnection.Token)); err != nil {
+	// 			return fmt.Errorf("failed to start refresher for Slack source %s: %w", sourceConnection.TeamID, err)
+	// 		}
+	// 	}
+	// }
 	return nil
 }
 
 func New() *config {
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
+	logger.SetOutput(os.Stdout)
 
 	cfg := &config{}
 	cfg.logger = logger
@@ -145,17 +154,16 @@ func Load() (*config, error) {
 	}
 
 	if cfg.Database_ != nil {
+		// cfg.Database_.Logger = gormlogrus{
+		// 	logger:                cfg.logger,
+		// 	SourceField:           "source",
+		// 	SkipErrRecordNotFound: true,
+		// }
+
 		if err := cfg.SetupDB(context.Background()); err != nil {
 			return nil, fmt.Errorf("failed to setup database: %w", err)
 		}
-	}
 
-	if cfg.Database_ != nil {
-		cfg.Database_.Logger = gormlogrus{
-			logger:                cfg.logger,
-			SourceField:           "source",
-			SkipErrRecordNotFound: true,
-		}
 	}
 
 	return cfg, nil
