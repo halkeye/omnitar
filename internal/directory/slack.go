@@ -121,20 +121,61 @@ func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth in
 	return clone.Clone[Person](*(val.(*Person))), nil
 }
 
-func (s *SlackSource) Lookup(ctx context.Context, hashedToken string) (Person, error) {
-	val, ok := s.emailMap.Load(hashedToken)
-	if !ok {
-		s.logger.WithField("hashedToken", hashedToken).Warn("unknown token to email")
-		return Person{}, nil
-	}
+// func (s *SlackSource) Lookup(ctx context.Context, hashedToken string) (Person, error) {
+// 	val, ok := s.emailMap.Load(hashedToken)
+// 	if !ok {
+// 		s.logger.WithField("hashedToken", hashedToken).Warn("unknown token to email")
+// 		return Person{}, nil
+// 	}
+//
+// 	slackID := val.(string)
+//
+// 	person, err := s.getUser(ctx, slackID, 1)
+// 	if err != nil {
+// 		return Person{}, err
+// 	}
+// 	return person, nil
+// }
 
-	slackID := val.(string)
+func (s *SlackSource) Lookup(ctx context.Context, email string) (Person, error) {
+	slackID, err := s.getUserIdByEmail(ctx, email)
+	if err != nil {
+		return Person{}, err
+	}
 
 	person, err := s.getUser(ctx, slackID, 1)
 	if err != nil {
 		return Person{}, err
 	}
 	return person, nil
+}
+
+func (s *SlackSource) getUserIdByEmail(ctx context.Context, email string) (string, error) {
+	cacheKey := fmt.Sprintf("email-to-slackid:%s", email)
+	val, err, _ := s.sg.Do(cacheKey, func() (any, error) {
+		cacheVal, err := s.cacheManager.Get(ctx, cacheKey)
+		if err != nil && !(store.NotFound{}).Is(err) {
+			return nil, fmt.Errorf("cache get: %w", err)
+		}
+		if cacheVal != nil {
+			return string(cacheVal), nil
+		}
+
+		slackUser, err := s.client.GetUserByEmailContext(ctx, email)
+		if err != nil {
+			return nil, fmt.Errorf("slack users.profile.get: %w", err)
+		}
+
+		err = s.cacheManager.Set(ctx, cacheKey, []byte(slackUser.ID), store.WithExpiration(time.Hour))
+		if err != nil {
+			s.logger.WithField("slackID", slackUser.ID).WithError(err).Error("cache set failed")
+		}
+		return slackUser.ID, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return val.(string), nil
 }
 
 func displayName(u *slack.UserProfile, email string) string {

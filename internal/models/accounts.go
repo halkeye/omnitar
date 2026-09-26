@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/google/uuid"
+	"uuid"
 
 	"gorm.io/gorm"
 )
@@ -23,7 +23,7 @@ func (a Account) GetTokenForSource(s string) *Token {
 }
 
 func (a *Account) BeforeCreate(tx *gorm.DB) error {
-	if a.ID == uuid.Nil {
+	if a.ID == uuid.Nil() {
 		a.ID = uuid.New() // Generates a new UUID
 	}
 	return nil

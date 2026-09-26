@@ -158,6 +158,12 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 	})
 
 	ginrouter.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(
+			context.WithValue(c.Request.Context(), templates.IsDevKey, router.Config.IsDev()),
+		)
+	})
+
+	ginrouter.Use(func(c *gin.Context) {
 		ctx := c.Request.Context()
 		session := sessions.Default(c)
 
@@ -176,8 +182,6 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 
 	ginrouter.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	ginrouter.GET("/healthz", router.healthzHandler)
-	ginrouter.Static("/js", "./static/js")
-	ginrouter.Static("/css", "./static/css")
 
 	ginrouter.GET("/", router.handlerIndexPage)
 
@@ -204,6 +208,8 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 	ginrouter.GET("/account/:accountUUID/profiles/:profileIdentifier", router.cors, router.accountMiddleware, router.profileHandler2)
 	ginrouter.GET("/account/:accountUUID/avatar/:profileIdentifier", router.cors, router.avatarHandler)
 	ginrouter.GET("/account/:accountUUID/webcomponent.js", router.cors, router.webcomponentHandler)
+
+	ginrouter.NoRoute(gin.WrapH(router.StaticHandler))
 
 	return ginrouter
 }

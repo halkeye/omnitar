@@ -1,25 +1,22 @@
 package models
 
 import (
-	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 
 	"gorm.io/gorm"
 )
 
 type Token struct {
-	ID           uuid.UUID      `gorm:"type:uuid;primarykey;"`
-	AccountUUID  *uuid.UUID     `gorm:"type:uuid;index"`
-	Account      *Account       `gorm:"foreignKey:AccountUUID;constraint:OnDelete:CASCADE;"`
-	Origin       string         `gorm:"not null;uniqueIndex:idx_tokens_origin"` // slack
-	OriginID     string         `gorm:"not null;uniqueIndex:idx_tokens_origin"` // slack=teamid
-	AccountToken string         `gorm:"not null"`
-	ExpiresAt    int64          `gorm:"not null;index"`
-	RefreshToken string         `gorm:""`
-	DeletedAt    gorm.DeletedAt `gorm:"index;uniqueIndex:idx_tokens_origin"`
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	gorm.Model
+
+	ID           uuid.UUID `gorm:"type:uuid;primarykey;"`
+	AccountUUID  uuid.UUID `gorm:"type:uuid;index"`
+	Account      *Account  `gorm:"foreignKey:AccountUUID;constraint:OnDelete:CASCADE;"`
+	Origin       string    `gorm:"not null;uniqueIndex:idx_tokens_origin"` // slack
+	OriginID     string    `gorm:"not null;uniqueIndex:idx_tokens_origin"` // slack=teamid
+	AccessToken  string    `gorm:"not null"`
+	ExpiresAt    int64     `gorm:"not null;index"`
+	RefreshToken string    `gorm:""`
 }
 
 func (t *Token) BeforeCreate(tx *gorm.DB) error {

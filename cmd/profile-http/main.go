@@ -24,6 +24,7 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -43,7 +44,7 @@ func main() {
 
 	router := api.New(api.WithLogger(cfg.Logger()), api.WithConfig(cfg), api.WithStaticHandler(staticHandler))
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	srv := &http.Server{

@@ -1,14 +1,15 @@
 {
-  "name": "webcomponent",
+  "name": "internal-profile-http",
   "private": true,
   "version": "1.0.0",
   "description": "",
-  "main": "webcomponent.js",
   "scripts": {
     "dev": "run-p vite:dev air",
     "air": "air",
     "vite:dev": "vite",
-    "build": "vite build && vite build --mode page",
+    "build": "npm run build:app && npm run build:webcomponent",
+    "build:app": "vite build",
+    "build:webcomponent": "vite build --mode webcomponent",
     "preview": "vite preview"
   },
   "keywords": [],
@@ -23,6 +24,7 @@
     "vite": "^8.2.2"
   },
   "dependencies": {
+    "@awesome.me/webawesome": "^3.14.0",
     "hoverintent": "^2.2.1"
   }
 }

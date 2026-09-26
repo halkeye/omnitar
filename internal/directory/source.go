@@ -12,7 +12,7 @@ type Source interface {
 	// to another source.
 	Fetch(ctx context.Context) error
 
-	Lookup(ctx context.Context, hashedToken string) (Person, error)
+	Lookup(ctx context.Context, key string) (Person, error)
 
 	Len() int
 }

@@ -6,3 +6,5 @@ type contextKey string
 var BaseURLKey contextKey = "baseURL"
 
 var FlashesKey contextKey = "flashes"
+
+var IsDevKey contextKey = "isdev"

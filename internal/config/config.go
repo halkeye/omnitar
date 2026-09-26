@@ -12,8 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/halkeye/omnitar/internal/directory"
 	"github.com/halkeye/omnitar/internal/models"
 	"github.com/halkeye/omnitar/internal/refresh"
@@ -187,8 +185,6 @@ type Config interface {
 	SessionKey() string
 	Database() *gorm.DB
 
-	FindOrCreateTokenAndAccount(ctx context.Context, accountUUID string, token models.Token) (models.Token, error)
-
 	Source(sourceID string) directory.Source
 	AddSource(sourceID string, source directory.Source) error
 	StartRefresher(sourceID string) error
@@ -356,45 +352,4 @@ func initialLoad(
 			backoff = maxBackoff
 		}
 	}
-}
-
-func (c *config) FindOrCreateTokenAndAccount(ctx context.Context, accountUUID string, token models.Token) (models.Token, error) {
-	dbToken := models.Token{}
-
-	c.logger.WithFields(logrus.Fields{
-		"token.origin":   token.Origin,
-		"token.originID": token.OriginID,
-		"accountUUID":    accountUUID,
-	}).Debug("Finding or creating token")
-
-	result := c.Database_.
-		Where(models.Token{Origin: token.Origin, OriginID: token.OriginID}).
-		Attrs(token).
-		FirstOrCreate(&dbToken)
-	if result.Error != nil {
-		return models.Token{}, fmt.Errorf("failed to retrieve or initialize token: %w", result.Error)
-	}
-	c.logger.WithField("dbToken", dbToken).Debug("Retrieved or initialized token")
-	if accountUUID == "" && dbToken.AccountUUID != nil {
-		accountUUID = dbToken.AccountUUID.String()
-	}
-
-	// if no account was found/created, create a new one
-	if accountUUID == "" {
-		dbAccount := &models.Account{}
-		err := gorm.G[models.Account](c.Database_).Create(ctx, dbAccount)
-		if err != nil {
-			return models.Token{}, fmt.Errorf("failed to create account: %w", err)
-		}
-		accountUUID = dbAccount.ID.String()
-	}
-
-	// Make sure the token is associated with the right account now
-	dbToken.AccountUUID = new(uuid.MustParse(accountUUID))
-	result = c.Database_.Save(&dbToken)
-	if result.Error != nil {
-		return models.Token{}, fmt.Errorf("failed to save token with associated account: %w", result.Error)
-	}
-
-	return dbToken, nil
 }

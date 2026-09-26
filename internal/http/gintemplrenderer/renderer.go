@@ -10,6 +10,7 @@ import (
 )
 
 var Default = &HTMLTemplRenderer{}
+var _ render.HTMLRender = (*HTMLTemplRenderer)(nil)
 
 type HTMLTemplRenderer struct {
 	FallbackHtmlRenderer render.HTMLRender

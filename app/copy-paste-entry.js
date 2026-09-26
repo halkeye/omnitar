@@ -39,7 +39,7 @@ button {
 
 button:focus {
   outline: 0;
-  border: 0;    
+  border: 0;
 }
 
 button:focus-visible {

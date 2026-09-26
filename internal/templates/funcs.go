@@ -4,6 +4,10 @@ import (
 	"context"
 )
 
+func IsDev(ctx context.Context) bool {
+	return ctx.Value(IsDevKey) == true
+}
+
 func SetBaseURL(ctx context.Context, baseURL string) context.Context {
 	return context.WithValue(ctx, BaseURLKey, baseURL)
 }

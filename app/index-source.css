@@ -1,0 +1,127 @@
+/* outright stolen from https://shoelace.style/assets/styles/docs.css */
+:root {
+  --docs-background-color: var(--sl-color-neutral-0);
+  --docs-border-color: var(--sl-color-neutral-200);
+  --docs-border-width: 1px;
+  --docs-border-radius: var(--sl-border-radius-medium);
+  --docs-content-padding: 2rem;
+  --docs-content-vertical-spacing: 2rem;
+  --docs-search-overlay-background: rgb(0 0 0 / 0.2);
+  --docs-skip-to-main-width: 200px;
+}
+
+/* Light theme */
+:root {
+  color-scheme: normal;
+  --sl-color-primary-50: var(--sl-color-sky-50);
+  --sl-color-primary-100: var(--sl-color-sky-100);
+  --sl-color-primary-200: var(--sl-color-sky-200);
+  --sl-color-primary-300: var(--sl-color-sky-300);
+  --sl-color-primary-400: var(--sl-color-sky-400);
+  --sl-color-primary-500: var(--sl-color-sky-500);
+  --sl-color-primary-600: var(--sl-color-sky-600);
+  --sl-color-primary-700: var(--sl-color-sky-700);
+  --sl-color-primary-800: var(--sl-color-sky-800);
+  --sl-color-primary-900: var(--sl-color-sky-900);
+  --sl-color-primary-950: var(--sl-color-sky-950);
+  --docs-overlay-color: hsl(240 3.8% 46.1% / 33%);
+  --docs-shadow-x-small: 0 1px 2px hsl(240 3.8% 46.1% / 12%);
+  --docs-shadow-small: 0 1px 2px hsl(240 3.8% 46.1% / 24%);
+  --docs-shadow-medium: 0 2px 4px hsl(240 3.8% 46.1% / 24%);
+  --docs-shadow-large: 0 2px 8px hsl(240 3.8% 46.1% / 24%);
+  --docs-shadow-x-large: 0 4px 16px hsl(240 3.8% 46.1% / 24%);
+}
+
+/* Dark theme */
+.sl-theme-dark {
+  color-scheme: dark;
+  --docs-overlay-color: hsl(0 0% 0% / 66%);
+  --docs-shadow-x-small: 0 1px 2px rgb(0 0 0 / 36%);
+  --docs-shadow-small: 0 1px 2px rgb(0 0 0 / 48%);
+  --docs-shadow-medium: 0 2px 4px rgb(0 0 0 / 48%);
+  --docs-shadow-large: 0 2px 8px rgb(0 0 0 / 48%);
+  --docs-shadow-x-large: 0 4px 16px rgb(0 0 0 / 48%);
+}
+
+html,
+body {
+  min-height: 100%;
+  padding: 0;
+  margin: 0;
+}
+
+wa-page::part(main) {
+  padding: 25px;
+}
+
+.hide {
+  display: none !important;
+}
+
+/* Docs example tabs */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 1.5rem 0;
+}
+
+.tabs__input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tabs__label {
+  order: 1;
+  padding: 0.6rem 1.1rem;
+  margin-right: 4px;
+  border: 1px solid var(--docs-border-color, #d7d7d7);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: var(--sl-color-neutral-100, #f4f4f5);
+  color: var(--sl-color-neutral-700, #444);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.tabs__label:hover {
+  background: var(--sl-color-neutral-0, #fff);
+}
+
+.tabs__panel {
+  order: 3;
+  width: 100%;
+  padding: 1.25rem;
+  border: 1px solid var(--docs-border-color, #d7d7d7);
+  border-radius: 0 8px 8px 8px;
+  background: var(--sl-color-neutral-0, #fff);
+  display: none;
+}
+
+.tabs__panel > :first-child {
+  margin-top: 0;
+}
+
+.tabs__panel > :last-child {
+  margin-bottom: 0;
+}
+
+.tabs__input:checked + .tabs__label {
+  background: var(--sl-color-neutral-0, #fff);
+  border-bottom: 1px solid var(--sl-color-neutral-0, #fff);
+  margin-bottom: -1px;
+  color: var(--sl-color-primary-700, #0056b3);
+}
+
+#tab-active:checked ~ #panel-active,
+#tab-invalid:checked ~ #panel-invalid {
+  display: block;
+}
+
+.tabs__input:focus-visible + .tabs__label {
+  outline: var(--sl-focus-ring, 2px solid #0056b3);
+  outline-offset: 2px;
+}

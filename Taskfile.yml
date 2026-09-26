@@ -45,18 +45,18 @@ tasks:
       - "internal/**/*.go"
     cmds:
       - go build -o ./tmp/main ./cmd/profile-http
-      - ./tmp/main | humanlog
+      - ./tmp/main | humanlog --keep component
 
   air:
     method: none
     env:
       PORT: 8080
     cmds:
-      - air | humanlog
+      - air | humanlog --keep component
 
   air:proxy:
     method: none
     env:
       PORT: 8081
     cmds:
-      - air -proxy.app_port=8081 -proxy.enabled=true -proxy.proxy_port=8080 | humanlog
+      - air -proxy.app_port=8081 -proxy.enabled=true -proxy.proxy_port=8080 | humanlog --keep component

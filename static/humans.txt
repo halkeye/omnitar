@@ -1,0 +1,14 @@
+/* TEAM */
+
+Your title: Gavin Mogan
+Site: gavin@gavinmogan.com
+Bsky: g4v.dev
+Location: Burnaby, BC
+
+/* SITE */
+
+Last update: 2026/09/24 
+Standards: OAuth
+Software: Vim <3
+
+

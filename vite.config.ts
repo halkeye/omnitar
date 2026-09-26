@@ -1,56 +1,37 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
-/** @type {import('vite').UserConfig} */
-export default defineConfig(({ command, mode }) => {
-  const buildPage = mode === "page";
+export default defineConfig(({ mode }) => {
+  const isWebComponent = mode === "webcomponent";
 
   return {
-    root: "webcomponent",
-    plugins: [
-      {
-        name: "html-inject-nonce-into-script-tag",
-        enforce: "post",
-        transformIndexHtml(html: string) {
-          if (command === "build") {
-            html = html.replace(
-              "</body>",
-              `<script type="text/javascript">
-              const scriptTag = document.createElement('script');
-              scriptTag.setAttribute('src','/webcomponent.js?orgId=E0AFSMB25HU');
-              scriptTag.setAttribute('type','module');
-              document.head.appendChild(scriptTag);
-            </script>`,
-            );
-          }
-          return html;
-        },
-      },
-    ],
     build: {
-      sourcemap: true,
-      outDir: "../static",
-      target: "es2020",
-      // static is outside Vite's root and includes this repository's .gitkeep.
+      outDir: "static",
       emptyOutDir: false,
-      ...(buildPage
+      target: "es2020",
+      ...(isWebComponent
         ? {
-            rollupOptions: {
-              input: resolve(import.meta.dirname, "webcomponent/index.html"),
-            },
-          }
-        : {
             lib: {
-              entry: resolve(
-                import.meta.dirname,
-                "webcomponent/webcomponent.ts",
-              ),
+              entry: resolve(import.meta.dirname, "webcomponent/webcomponent.ts"),
               formats: ["es"],
               fileName: "webcomponent",
             },
             rollupOptions: {
               output: {
                 codeSplitting: false,
+              },
+            },
+          }
+        : {
+            cssCodeSplit: false,
+            rollupOptions: {
+              input: resolve(import.meta.dirname, "app/app.js"),
+              output: {
+                entryFileNames: "js/app.js",
+                assetFileNames: (asset) =>
+                  asset.name?.endsWith(".css")
+                    ? "css/index.css"
+                    : "assets/[name]-[hash][extname]",
               },
             },
           }),

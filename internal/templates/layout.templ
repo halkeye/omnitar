@@ -8,15 +8,12 @@ templ BaseLayout() {
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<meta name="description" content="A web component to show a slack profile card on hover"/>
 			<title>omnitar</title>
-			<link rel="stylesheet" href="/css/index.css"/>
-			<script src="/js/app.js"></script>
-			<!-- Required: default theme + autoloader -->
-			<link rel="stylesheet" href="https://ka-f.webawesome.com/webawesome@3.13.0/styles/themes/default.css"/>
-			<script type="module" src="https://ka-f.webawesome.com/webawesome@3.13.0/webawesome.loader.js"></script>
-			<!-- Recommended: utility classes ("CSS Utilities") -->
-			<link rel="stylesheet" href="https://ka-f.webawesome.com/webawesome@3.13.0/styles/utilities.css"/>
-			<!-- Optional: CSS reset ("Native Styles") -->
-			<link rel="stylesheet" href="https://ka-f.webawesome.com/webawesome@3.13.0/styles/native.css"/>
+			if IsDev(ctx) {
+				<script type="module" src="/app/app.js"></script>
+			} else {
+				<link rel="stylesheet" href="/css/index.css"/>
+				<script src="/js/app.js"></script>
+			}
 		</head>
 		<body>
 			<wa-page>
@@ -27,7 +24,11 @@ templ BaseLayout() {
 					<h1>&lt;omnitar-card&gt;</h1>
 					<p>Omni(-Ava)tar</p>
 				</div>
-				<wa-toast></wa-toast>
+				<wa-toast>
+					for _, flash := range Flashes(ctx) {
+						<wa-toast-item variant="danger">{ flash }</wa-toast-item>
+					}
+				</wa-toast>
 				<span slot="subheader">
 					for _, flash := range Flashes(ctx) {
 						<wa-callout variant="danger">
@@ -39,22 +40,7 @@ templ BaseLayout() {
 				</span>
 				{ children... }
 			</wa-page>
-			<script type="module" src="/js/copy-paste.js"></script>
 			<!--/email_off-->
-			<script>
-        function flashMsg(msg) {
-          // FIXME make flashes have string and variant/type
-          docReady(() => {
-              const toastItem = document.createElement('wa-toast-item');
-              toastItem.variant = 'danger';
-              toastItem.innerHTML = `${msg}`;
-              document.querySelector('wa-toast').prepend(toastItem);
-          })
-        }
-      </script>
-			for _, flash := range Flashes(ctx) {
-				@templ.JSFuncCall("flashMsg", flash)
-			}
 		</body>
 	</html>
 }

@@ -7,12 +7,13 @@ import (
 	"io"
 	"net/http"
 	"time"
+	"uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/slack-go/slack"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/halkeye/omnitar/internal/directory"
 	"github.com/halkeye/omnitar/internal/http/gintemplrenderer"
@@ -130,7 +131,7 @@ func (router *Deps) handlerMyAccountPage(c *gin.Context) {
 	var err error
 	dbAccount := getTyped[models.Account](c, "account")
 
-	tokens, err := gorm.G[*models.Token](router.Config.Database()).Where(models.Token{AccountUUID: new(dbAccount.ID)}).Find(c.Request.Context())
+	tokens, err := gorm.G[*models.Token](router.Config.Database()).Where(models.Token{AccountUUID: dbAccount.ID}).Find(c.Request.Context())
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to load tokens: %w", err))
 		return
@@ -177,7 +178,11 @@ func (router *Deps) handlerAuthLogout(c *gin.Context) {
 }
 
 func (router *Deps) webcomponentHandler(c *gin.Context) {
-	c.Request.URL.Path = "/webcomponent.js"
+	if router.Config.IsDev() {
+		c.Request.URL.Path = "/webcomponent/webcomponent.ts"
+	} else {
+		c.Request.URL.Path = "/webcomponent.js"
+	}
 	router.StaticHandler.ServeHTTP(c.Writer, c.Request)
 }
 
@@ -226,7 +231,7 @@ func (router *Deps) deleteTokenHandler(c *gin.Context) {
 		return
 	}
 
-	_, err := gorm.G[models.Token](router.Config.Database()).Where(models.Token{ID: uuid.MustParse(tokenID), AccountUUID: new(dbAccount.ID)}).Delete(c.Request.Context())
+	_, err := gorm.G[models.Token](router.Config.Database()).Where(models.Token{ID: uuid.MustParse(tokenID), AccountUUID: dbAccount.ID}).Delete(c.Request.Context())
 	if err != nil {
 		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to delete token: %w", err))
 		return
@@ -259,6 +264,7 @@ func (router *Deps) handlerProvider(c *gin.Context) {
 }
 
 func (router *Deps) handlerProviderCallback(c *gin.Context) {
+	ctx := c.Request.Context()
 	session := sessions.Default(c)
 
 	providerFunc := router.providers[models.OAuthProvider(c.Param("provider"))]
@@ -287,9 +293,6 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 		return
 	}
 
-	ctx := c.Request.Context()
-	// rt := MyRoundTripper{logger: router.Logger}
-	// ctx := context.WithValue(c.Request.Context(), oauth2.HTTPClient, &http.Client{Transport: rt})
 	// Exchange code for access token
 	token, err := oauth2Config.Exchange(ctx, code)
 	if err != nil {
@@ -297,37 +300,34 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 		return
 	}
 
-	accountUUID := sessions.Get[string](session, "account_id")
-
 	router.Logger.WithField("team", token.Extra("team")).Debug("OAuth callback received")
-	dbToken := models.Token{AccountToken: token.AccessToken, ExpiresAt: token.Expiry.Unix(), RefreshToken: token.RefreshToken}
+	dbTokens := []*models.Token{}
 	switch models.OAuthProvider(c.Param("provider")) {
 	case models.Slack:
-		router.Logger.Info("something")
-
 		for _, field := range []string{"enterprise", "team"} {
 			extra, ok := token.Extra(field).(map[string]any)
 			router.Logger.WithField("field", field).WithField("extra", extra).Debug("Retrieved extra field from token")
 			if !ok {
-				continue
-			}
-			originID, ok := extra["id"].(string)
-			router.Logger.WithField("field", field).WithField("originID", originID).Debug("Retrieved origin ID from extra field")
-			if !ok {
+				router.Logger.WithField("field", field).Debug("Extra field is not a map[string]any")
 				continue
 			}
 
-			dbSlackToken := dbToken
-			dbSlackToken.Origin = "slack"
-			dbSlackToken.OriginID = originID
-			dbToken, err = router.Config.FindOrCreateTokenAndAccount(ctx, accountUUID, dbSlackToken)
-			if err != nil {
-				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to find or create slack token and account: %w", err))
-				return
+			originID, ok := extra["id"].(string)
+			router.Logger.WithField("field", field).WithField("originID", originID).Debug("Retrieved origin ID from extra field")
+			if !ok {
+				router.Logger.WithField("field", field).Debug("Origin ID is not a string")
+				continue
 			}
+
+			dbTokens = append(dbTokens, &models.Token{
+				AccessToken:  token.AccessToken,
+				RefreshToken: token.RefreshToken,
+				ExpiresAt:    token.Expiry.Unix(),
+				Origin:       "slack",
+				OriginID:     originID,
+			})
 		}
 	case models.Atlassian:
-		router.Logger.Info("something")
 		router.Logger.WithField("token", token).Debug("Retrieved access token")
 		client := oauth2Config.Client(ctx, token)
 		resp, err := client.Get("https://api.atlassian.com/oauth/token/accessible-resources")
@@ -357,25 +357,67 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 		}
 
 		for _, ar := range resources {
-			dbResourceToken := dbToken
-			dbResourceToken.Origin = "atlassian"
-			dbResourceToken.OriginID = ar.URL
-			dbToken, err = router.Config.FindOrCreateTokenAndAccount(ctx, accountUUID, dbResourceToken)
-			if err != nil {
-				c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to find or create atlassian token and account: %w", err))
-				return
-			}
+			dbTokens = append(dbTokens, &models.Token{
+				AccessToken:  token.AccessToken,
+				RefreshToken: token.RefreshToken,
+				ExpiresAt:    token.Expiry.Unix(),
+				Origin:       "atlassian",
+				OriginID:     ar.URL,
+			})
 		}
 	}
 
-	if dbToken.AccountUUID == nil {
-		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("no account associated with token after OAuth callback"))
-		return
+	whereTokens := [][]interface{}{}
+	for _, dbToken := range dbTokens {
+		whereTokens = append(whereTokens, []interface{}{dbToken.Origin, dbToken.OriginID})
 	}
 
-	sessions.Set(session, "account_id", dbToken.AccountUUID.String())
+	accountUUID := sessions.Get[string](session, "account_id")
+	var dbAccount *models.Account
+	if accountUUID == "" {
+		// Join preloading does not support the Tokens has-many association.
+		// Find the owning account through matching token account UUIDs instead.
+		err := router.Config.Database().Model(&models.Token{}).
+			Select("account_uuid").
+			Where("(origin, origin_id) IN ?", whereTokens).
+			Where("account_uuid IS NOT NULL").First(&accountUUID).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to query account: %w", err))
+			return
+		}
+	}
+
+	if accountUUID != "" {
+		dbAccount, err = gorm.G[*models.Account](router.Config.Database()).Where(models.Account{ID: uuid.MustParse(accountUUID)}).First(ctx)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to query account: %w", err))
+			return
+		}
+	}
+
+	if dbAccount == nil || errors.Is(err, gorm.ErrRecordNotFound) {
+		err := gorm.G[*models.Account](router.Config.Database()).Create(ctx, &dbAccount)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to create account: %w", err))
+			return
+		}
+	}
+
+	for _, dbToken := range dbTokens {
+		dbToken.AccountUUID = dbAccount.ID
+		err := gorm.G[*models.Token](router.Config.Database(), clause.OnConflict{
+			Columns:   []clause.Column{{Name: "origin"}, {Name: "origin_id"}},
+			UpdateAll: true,
+		}).Create(ctx, &dbToken)
+		if err != nil {
+			c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to save token: %w", err))
+			return
+		}
+	}
+
+	sessions.Set(session, "account_id", dbAccount.ID.String())
 	sessions.MustSave(session)
 
-	router.Logger.WithField("account_id", dbToken.AccountUUID).Debug("Saved account ID in session")
-	c.Redirect(http.StatusFound, "/auth")
+	router.Logger.WithField("account_id", dbAccount.ID).Debug("Saved account ID in session")
+	c.Redirect(http.StatusFound, "/account/my")
 }
