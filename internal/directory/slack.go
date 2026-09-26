@@ -3,6 +3,7 @@ package directory
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"sync"
@@ -47,23 +48,17 @@ func NewSlackSource(logger *logrus.Logger, slackOrgID string, token string) *Sla
 // Name implements Source.
 func (s *SlackSource) Name() string { return "slack" }
 
-// Fetch implements Source, returning every non-deleted, non-bot Slack member
-// that has an email address on file.
-func (s *SlackSource) Fetch(ctx context.Context) error {
-	users, err := s.client.GetUsersContext(ctx)
+func (s *SlackSource) Lookup(ctx context.Context, email string) (Person, error) {
+	slackID, err := s.getUserIdByEmail(ctx, email)
 	if err != nil {
-		return fmt.Errorf("slack users.list: %w", err)
+		return Person{}, err
 	}
 
-	for _, u := range users {
-		if u.Deleted || u.IsBot || u.Profile.Email == "" {
-			continue
-		}
-		s.emailCounter[u.Profile.Email] = struct{}{}
-		s.emailMap.Store(MD5Hash(u.Profile.Email), u.ID)
-		s.emailMap.Store(SHA256Hash(u.Profile.Email), u.ID)
+	person, err := s.getUser(ctx, slackID, 1)
+	if err != nil {
+		return Person{}, err
 	}
-	return nil
+	return person, nil
 }
 
 func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth int) (Person, error) {
@@ -73,7 +68,11 @@ func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth in
 		if err != nil && !(store.NotFound{}).Is(err) {
 			return nil, fmt.Errorf("cache get: %w", err)
 		}
+
 		if cacheVal != nil {
+			if len(cacheVal) == 0 {
+				return person, &NotFoundError{}
+			}
 			err = json.Unmarshal(cacheVal, &person)
 			if err != nil {
 				return nil, fmt.Errorf("cache unmarshal: %w", err)
@@ -83,6 +82,12 @@ func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth in
 
 		slackUserProfile, err := s.client.GetUserProfile(&slack.GetUserProfileParameters{UserID: slackID, IncludeLabels: true})
 		if err != nil {
+			if slackErr, ok := errors.AsType[slack.SlackErrorResponse](err); ok {
+				if slackErr.Error() == "users_not_found" {
+					s.cacheManager.Set(ctx, slackID, []byte{}, store.WithExpiration(time.Hour))
+					return person, &NotFoundError{}
+				}
+			}
 			return nil, fmt.Errorf("slack users.profile.get: %w", err)
 		}
 
@@ -121,35 +126,6 @@ func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth in
 	return clone.Clone[Person](*(val.(*Person))), nil
 }
 
-// func (s *SlackSource) Lookup(ctx context.Context, hashedToken string) (Person, error) {
-// 	val, ok := s.emailMap.Load(hashedToken)
-// 	if !ok {
-// 		s.logger.WithField("hashedToken", hashedToken).Warn("unknown token to email")
-// 		return Person{}, nil
-// 	}
-//
-// 	slackID := val.(string)
-//
-// 	person, err := s.getUser(ctx, slackID, 1)
-// 	if err != nil {
-// 		return Person{}, err
-// 	}
-// 	return person, nil
-// }
-
-func (s *SlackSource) Lookup(ctx context.Context, email string) (Person, error) {
-	slackID, err := s.getUserIdByEmail(ctx, email)
-	if err != nil {
-		return Person{}, err
-	}
-
-	person, err := s.getUser(ctx, slackID, 1)
-	if err != nil {
-		return Person{}, err
-	}
-	return person, nil
-}
-
 func (s *SlackSource) getUserIdByEmail(ctx context.Context, email string) (string, error) {
 	cacheKey := fmt.Sprintf("email-to-slackid:%s", email)
 	val, err, _ := s.sg.Do(cacheKey, func() (any, error) {
@@ -157,12 +133,19 @@ func (s *SlackSource) getUserIdByEmail(ctx context.Context, email string) (strin
 		if err != nil && !(store.NotFound{}).Is(err) {
 			return nil, fmt.Errorf("cache get: %w", err)
 		}
+
 		if cacheVal != nil {
 			return string(cacheVal), nil
 		}
 
 		slackUser, err := s.client.GetUserByEmailContext(ctx, email)
 		if err != nil {
+			if slackErr, ok := errors.AsType[slack.SlackErrorResponse](err); ok {
+				if slackErr.Error() == "users_not_found" {
+					s.cacheManager.Set(ctx, cacheKey, []byte{}, store.WithExpiration(time.Hour))
+					return nil, &NotFoundError{}
+				}
+			}
 			return nil, fmt.Errorf("slack users.profile.get: %w", err)
 		}
 

@@ -61,12 +61,7 @@ func newTestRouter(t *testing.T) http.Handler {
 		t.Fatalf("AddSource() error = %v", err)
 	}
 	logger, _ := test.NewNullLogger()
-	return NewRouter(&Deps{
-		Logger:        logger,
-		Config:        cfg,
-		DefaultAvatar: []byte("<svg>default</svg>"),
-		StaticHandler: notFoundStaticHandler,
-	})
+	return New(WithLogger(logger), WithConfig(cfg), WithDefaultAvatar([]byte("<svg>default</svg>")), WithStaticHandler(notFoundStaticHandler)).NewHTTPHandler()
 }
 
 // newSlackAuthTestRouter builds a router with Slack OAuth credentials
@@ -88,12 +83,7 @@ func newSlackAuthTestRouter(t *testing.T, apiURL string) (http.Handler, config.C
 		}
 	})
 	logger, _ := test.NewNullLogger()
-	router := NewRouter(&Deps{
-		Logger:        logger,
-		Config:        cfg,
-		SlackAPIURL:   apiURL,
-		StaticHandler: notFoundStaticHandler,
-	})
+	router := New(WithLogger(logger), WithConfig(cfg), WithSlackAPIURL(apiURL), WithStaticHandler(notFoundStaticHandler)).NewHTTPHandler()
 	return router, cfg
 }
 

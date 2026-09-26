@@ -194,19 +194,10 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 	ginrouter.GET("/auth/login", router.handlerAuthSigninPage)
 	ginrouter.GET("/auth/logout", router.middlewareSessionUser, router.handlerAuthLogout)
 
-	if router.Config.SlackClientID() != "" && router.Config.SlackClientSecret() != "" {
-		ginrouter.GET("/slack/auth", router.slackInstallHandler())
-	}
-
-	ginrouter.GET("/slack/:slackOrgId/profiles/:profileIdentifier", router.cors, router.profileHandler)
-	ginrouter.OPTIONS("/slack/:slackOrgId/profiles/:profileIdentifier", router.cors)
-	ginrouter.GET("/slack/:slackOrgId/avatar/:profileIdentifier", router.cors, router.avatarHandler)
-	ginrouter.OPTIONS("/slack/:slackOrgId/avatar/:profileIdentifier", router.cors)
-	ginrouter.GET("/slack/:slackOrgId/webcomponent.js", router.cors, router.webcomponentHandler)
-
 	ginrouter.GET("/account/my", router.middlewareSessionUser, router.handlerMyAccountPage)
-	ginrouter.GET("/account/:accountUUID/profiles/:profileIdentifier", router.cors, router.accountMiddleware, router.profileHandler2)
-	ginrouter.GET("/account/:accountUUID/avatar/:profileIdentifier", router.cors, router.avatarHandler)
+	ginrouter.GET("/account/:accountUUID/profiles/:email", router.cors, router.accountMiddleware, router.profileHandler)
+	ginrouter.GET("/account/:accountUUID/avatar/:email", router.cors, router.avatarHandler)
+	ginrouter.GET("/account/:accountUUID/issues/:id", router.cors, router.accountMiddleware, router.issueHandler)
 	ginrouter.GET("/account/:accountUUID/webcomponent.js", router.cors, router.webcomponentHandler)
 
 	ginrouter.NoRoute(gin.WrapH(router.StaticHandler))
