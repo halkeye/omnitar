@@ -1,6 +1,4 @@
-// Package directory defines the employee directory model and the Slack
-// source that populates it.
-package directory
+package models
 
 import (
 	"crypto/md5" //nolint:gosec // required for Gravatar-compatible hashing, not for security

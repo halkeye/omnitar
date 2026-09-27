@@ -95,7 +95,7 @@ func AccountMyPage(account *models.Account, tokens []*models.Token) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p><p><omnitar-profile email=\"slack@gavinmogan.com\">gmogan</omnitar-profile></p><p><omnitar-issue key=\"HR-2\">HR-2</omnitar-issue></p><h3>Sources  ( <a href=\"/auth/slack\"><wa-icon name=\"plus\"></wa-icon><wa-icon name=\"slack\" family=\"brands\"></wa-icon></a> / <a href=\"/auth/atlassian\"><wa-icon name=\"plus\"></wa-icon><wa-icon name=\"atlassian\" family=\"brands\"></wa-icon></a> )</h3><table style=\"padding: 15px\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p><!--\n\t\t<p><omnitar-profile email=\"slack@gavinmogan.com\">gmogan</omnitar-profile></p>\n\t\t<p><omnitar-issue issue=\"HR-2\">HR-2</omnitar-issue></p>\n    --> <h3>Sources  ( <a href=\"/auth/slack\"><wa-icon name=\"plus\"></wa-icon><wa-icon name=\"slack\" family=\"brands\"></wa-icon></a> / <a href=\"/auth/atlassian\"><wa-icon name=\"plus\"></wa-icon><wa-icon name=\"atlassian\" family=\"brands\"></wa-icon></a> )</h3><table style=\"padding: 15px\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -107,7 +107,7 @@ func AccountMyPage(account *models.Account, tokens []*models.Token) templ.Compon
 				var templ_7745c5c3_Var7 string
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(token.Origin)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `account.templ`, Line: 23, Col: 23}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `account.templ`, Line: 25, Col: 23}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -120,18 +120,31 @@ func AccountMyPage(account *models.Account, tokens []*models.Token) templ.Compon
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(token.OriginID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `account.templ`, Line: 24, Col: 25}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `account.templ`, Line: 26, Col: 25}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</td><td><wa-button variant=\"danger\" data-method=\"delete\" data-confirm=\"really delete?\" href=\"/auth/token/{ token.ID }\">Delete</wa-button></td></tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</td><td><wa-button variant=\"danger\" data-method=\"delete\" data-confirm=\"really delete?\" href=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var9 string
+				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue("/auth/token/" + token.ID.String())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `account.templ`, Line: 28, Col: 126}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\">Delete</wa-button></td></tr>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</table>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</table>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"reflect"
 	"time"
 
+	"github.com/halkeye/omnitar/internal/logger"
 	"github.com/halkeye/omnitar/internal/models"
 
 	"github.com/caarlos0/env/v11"
@@ -34,19 +34,18 @@ type config struct {
 	LogLevel               string            `env:"LOG_LEVEL,required" envDefault:"info"`
 	SessionKey_            string            `env:"SESSION_KEY,required" envDefault:"omnitar-session-key"`
 	Database_              *gorm.DB          `env:"DATABASE_URL" envDefault:""`
-
-	logger *logrus.Logger
 }
 
 func (c *config) SetupDB(ctx context.Context) error {
 	var err error
-	c.logger.Debug("connecting to database")
+	ll := logger.FromContext(ctx)
+	ll.Debug("connecting to database")
 	// Migrate the schema
 	err = c.Database_.AutoMigrate(&models.Account{}, &models.Token{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate schema: %w", err)
 	}
-	c.logger.Debug("migration done")
+	ll.Debug("migration done")
 
 	accounts, err := gorm.G[models.Account](c.Database_).Find(ctx)
 	if err != nil {
@@ -66,12 +65,7 @@ func (c *config) SetupDB(ctx context.Context) error {
 }
 
 func New() *config {
-	logger := logrus.New()
-	logger.SetFormatter(&logrus.JSONFormatter{})
-	logger.SetOutput(os.Stdout)
-
 	cfg := &config{}
-	cfg.logger = logger
 
 	return cfg
 }
@@ -117,9 +111,9 @@ func Load() (*config, error) {
 	}
 
 	if level, err := logrus.ParseLevel(cfg.LogLevel); err != nil {
-		cfg.logger.WithError(err).Warn("invalid LOG_LEVEL, defaulting to info")
+		logger.DefaultLogger.WithError(err).Warn("invalid LOG_LEVEL, defaulting to info")
 	} else {
-		cfg.logger.SetLevel(level)
+		logger.DefaultLogger.SetLevel(level)
 	}
 
 	if cfg.Database_ != nil {
@@ -145,8 +139,6 @@ type Config interface {
 
 	IsDev() bool
 
-	Logger() *logrus.Logger
-
 	SlackClientID() string
 	SlackClientSecret() string
 
@@ -155,10 +147,6 @@ type Config interface {
 
 	SessionKey() string
 	Database() *gorm.DB
-}
-
-func (c *config) Logger() *logrus.Logger {
-	return c.logger
 }
 
 func (c *config) IsDev() bool {

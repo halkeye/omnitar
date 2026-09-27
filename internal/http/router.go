@@ -14,11 +14,11 @@ import (
 	"github.com/m4gshm/gollections/slice"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/oauth2"
 
 	"github.com/halkeye/omnitar/internal/config"
-	"github.com/halkeye/omnitar/internal/debugroundtripper"
+	"github.com/halkeye/omnitar/internal/database"
 	"github.com/halkeye/omnitar/internal/http/gintemplrenderer"
+	"github.com/halkeye/omnitar/internal/logger"
 	"github.com/halkeye/omnitar/internal/models"
 	"github.com/halkeye/omnitar/internal/sessions"
 	"github.com/halkeye/omnitar/internal/templates"
@@ -27,8 +27,8 @@ import (
 // Deps are the dependencies NewRouter needs to build the full route table.
 type Deps struct {
 	Logger *logrus.Logger
-	// DefaultAvatar is served in place of an unknown/missing avatar.
-	DefaultAvatar []byte
+	// defaultAvatar is served in place of an unknown/missing avatar.
+	defaultAvatar []byte
 	StaticHandler http.Handler
 	Config        config.Config
 	// SlackAPIURL overrides the Slack API base URL used for the OAuth
@@ -36,7 +36,7 @@ type Deps struct {
 	// an httptest.Server.
 	SlackAPIURL string
 
-	providers map[models.OAuthProvider]func(*gin.Context) *oauth2.Config
+	providers map[models.OAuthProvider]models.SourceOauthContainer
 }
 
 type RouterOptions func(r *Deps)
@@ -49,7 +49,7 @@ func WithLogger(logger *logrus.Logger) RouterOptions {
 
 func WithDefaultAvatar(avatar []byte) RouterOptions {
 	return func(r *Deps) {
-		r.DefaultAvatar = avatar
+		r.defaultAvatar = avatar
 	}
 }
 
@@ -71,59 +71,25 @@ func WithSlackAPIURL(url string) RouterOptions {
 	}
 }
 
-func New(opts ...RouterOptions) *Deps {
+func New(opts ...RouterOptions) http.Handler {
 	d := &Deps{}
-	d.DefaultAvatar = DefaultAvatarSVG()
-	d.providers = map[models.OAuthProvider]func(*gin.Context) *oauth2.Config{
-		models.Slack:     d.getSlackOauth,
-		models.Atlassian: d.getAtlassianOauth,
-	}
+	d.defaultAvatar = DefaultAvatarSVG()
+	d.providers = map[models.OAuthProvider]models.SourceOauthContainer{}
 	for _, opt := range opts {
 		opt(d)
 	}
-	return d
-}
 
-func (router *Deps) getSlackOauth(c *gin.Context) *oauth2.Config {
-	callbackURL := location.Get(c)
-	callbackURL.Path = "/auth/slack/callback"
-
-	return &oauth2.Config{
-		ClientID:     router.Config.SlackClientID(),
-		ClientSecret: router.Config.SlackClientSecret(),
-		RedirectURL:  callbackURL.String(),
-		Endpoint: oauth2.Endpoint{
-			AuthURL:   "https://slack.com/oauth/v2/authorize",
-			TokenURL:  "https://slack.com/api/oauth.v2.access",
-			AuthStyle: oauth2.AuthStyleInParams,
-		},
-		Scopes: []string{"users.profile:read", "users:read", "users:read.email"},
+	if _, ok := d.providers[models.Slack]; !ok {
+		d.providers[models.Slack] = models.SlackSourceOAuth2Config(d.Config.SlackClientID(), d.Config.SlackClientSecret())
 	}
-}
-
-func (router *Deps) getAtlassianOauth(c *gin.Context) *oauth2.Config {
-	callbackURL := location.Get(c)
-	callbackURL.Path = "/auth/atlassian/callback"
-
-	return &oauth2.Config{
-		ClientID:     router.Config.AtlassianClientID(),
-		ClientSecret: router.Config.AtlassianClientSecret(),
-		RedirectURL:  callbackURL.String(),
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  "https://auth.atlassian.com/authorize",
-			TokenURL: "https://auth.atlassian.com/oauth/token",
-			// https://api.atlassian.com/oauth/token/accessible-resources
-		},
-		Scopes: []string{"read:avatar:jira", "read:project.avatar:jira", "read:issue:jira", "read:issue-meta:jira"},
+	if _, ok := d.providers[models.Atlassian]; !ok {
+		d.providers[models.Atlassian] = models.AtlassianSourceOAuth2Config(d.Config.AtlassianClientID(), d.Config.AtlassianClientSecret())
 	}
-}
 
-// NewRouter builds the full route table for the service.
-func (router *Deps) NewHTTPHandler() http.Handler {
-	if router.Logger != nil {
-		gin.DebugPrintFunc = router.Logger.Debugf
+	if d.Logger != nil {
+		gin.DebugPrintFunc = d.Logger.Debugf
 		gin.DebugPrintRouteFunc = func(method, path, handler string, handlers int) {
-			router.Logger.WithFields(logrus.Fields{
+			d.Logger.WithFields(logrus.Fields{
 				"handler":  handler,
 				"handlers": handlers,
 				"method":   method,
@@ -132,36 +98,30 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 		}
 	}
 
-	store := gormsessions.NewStore(router.Config.Database(), true, []byte(router.Config.SessionKey()))
+	store := gormsessions.NewStore(d.Config.Database(), true, []byte(d.Config.SessionKey()))
 	ginrouter := gin.New()
+
+	ginrouter.Use(func(c *gin.Context) {
+		ctx := c.Request.Context()
+		ctx = logger.WithLogger(ctx, logrus.NewEntry(d.Logger))
+		ctx = database.WithDatabase(ctx, d.Config.Database())
+		ctx = context.WithValue(ctx, templates.IsDevKey, d.Config.IsDev())
+		// ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Transport: debugroundtripper.RoundTripper{}})
+		c.Request = c.Request.WithContext(ctx)
+	})
 
 	ginHtmlRenderer := ginrouter.HTMLRender
 	ginrouter.HTMLRender = &gintemplrenderer.HTMLTemplRenderer{FallbackHtmlRenderer: ginHtmlRenderer}
 
 	ginrouter.Use(
 		location.Default(),
-		sessions.Sessions("mysession", store),
-		router.requestLogger(),
-		router.errorHandler(),
-		router.recovery(),
+		sessions.Sessions("omnitar", store),
+		d.requestLogger(), // FIXME
+		d.errorHandler(),  // FIXME
+		d.recovery(),      // FIXME
 		gin.Recovery(),
-		router.noTransform(),
+		d.noTransform(), // FIXME
 	)
-
-	ginrouter.Use(func(c *gin.Context) {
-		client := http.Client{
-			Transport: debugroundtripper.RoundTripper{Logger: router.Logger},
-		}
-		c.Request = c.Request.WithContext(
-			context.WithValue(c.Request.Context(), oauth2.HTTPClient, &client),
-		)
-	})
-
-	ginrouter.Use(func(c *gin.Context) {
-		c.Request = c.Request.WithContext(
-			context.WithValue(c.Request.Context(), templates.IsDevKey, router.Config.IsDev()),
-		)
-	})
 
 	ginrouter.Use(func(c *gin.Context) {
 		ctx := c.Request.Context()
@@ -181,26 +141,22 @@ func (router *Deps) NewHTTPHandler() http.Handler {
 	})
 
 	ginrouter.GET("/metrics", gin.WrapH(promhttp.Handler()))
-	ginrouter.GET("/healthz", router.healthzHandler)
+	ginrouter.GET("/healthz", d.healthzHandler)
 
-	ginrouter.GET("/", router.handlerIndexPage)
+	ginrouter.GET("/", d.handlerIndexPage)
 
-	// FIXME - move to source
-	ginrouter.GET("/auth/:provider", router.handlerProvider)
-	ginrouter.GET("/auth/:provider/callback", router.handlerProviderCallback)
+	ginrouter.GET("/auth/:provider", d.handlerProvider)
+	ginrouter.GET("/auth/:provider/callback", d.handlerProviderCallback)
+	ginrouter.DELETE("/auth/token/:token", d.middlewareSessionUser, d.deleteTokenHandler)
+	ginrouter.GET("/auth/logout", d.middlewareSessionUser, d.handlerAuthLogout)
 
-	ginrouter.DELETE("/auth/token/:token", router.middlewareSessionUser, router.deleteTokenHandler)
-	ginrouter.GET("/auth/register", router.handlerAuthRegisterPage)
-	ginrouter.GET("/auth/login", router.handlerAuthSigninPage)
-	ginrouter.GET("/auth/logout", router.middlewareSessionUser, router.handlerAuthLogout)
+	ginrouter.GET("/account/my", d.middlewareSessionUser, d.handlerMyAccountPage)
+	ginrouter.GET("/account/:accountUUID/profiles/:source/:email", d.cors, d.accountMiddleware, d.profileHandler)
+	ginrouter.GET("/account/:accountUUID/avatar/:source/:email", d.cors, d.avatarHandler)
+	ginrouter.GET("/account/:accountUUID/issues/:source/:id", d.cors, d.accountMiddleware, d.issueHandler)
+	ginrouter.GET("/account/:accountUUID/webcomponent.js", d.cors, d.webcomponentHandler)
 
-	ginrouter.GET("/account/my", router.middlewareSessionUser, router.handlerMyAccountPage)
-	ginrouter.GET("/account/:accountUUID/profiles/:email", router.cors, router.accountMiddleware, router.profileHandler)
-	ginrouter.GET("/account/:accountUUID/avatar/:email", router.cors, router.avatarHandler)
-	ginrouter.GET("/account/:accountUUID/issues/:id", router.cors, router.accountMiddleware, router.issueHandler)
-	ginrouter.GET("/account/:accountUUID/webcomponent.js", router.cors, router.webcomponentHandler)
-
-	ginrouter.NoRoute(gin.WrapH(router.StaticHandler))
+	ginrouter.NoRoute(gin.WrapH(d.StaticHandler))
 
 	return ginrouter
 }

@@ -7,9 +7,9 @@ import (
 	"uuid"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
+	"github.com/halkeye/omnitar/internal/logger"
 	"github.com/halkeye/omnitar/internal/models"
 	"github.com/halkeye/omnitar/internal/sessions"
 )
@@ -33,7 +33,6 @@ func (router *Deps) accountMiddleware(c *gin.Context) {
 	}
 
 	dbAccount, err := gorm.G[models.Account](router.Config.Database()).
-		Preload("Tokens", nil).
 		Where(models.Account{ID: accountUUID}).
 		First(c.Request.Context())
 	if err != nil {
@@ -60,7 +59,7 @@ func (router *Deps) requestLogger() gin.HandlerFunc {
 			return
 		}
 
-		ll := router.Logger.WithFields(logrus.Fields{
+		ll := logger.FromContext(c.Request.Context()).WithFields(logger.Fields{
 			"client_ip": c.ClientIP(),
 			"latency":   time.Since(started).String(),
 			"method":    c.Request.Method,

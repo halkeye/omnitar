@@ -1,13 +1,15 @@
 package models
 
 import (
+	"context"
+	"fmt"
+	"time"
 	"uuid"
 
+	"golang.org/x/oauth2"
 	"gorm.io/gorm"
 
-	"github.com/sirupsen/logrus"
-
-	"github.com/halkeye/omnitar/internal/directory"
+	"github.com/halkeye/omnitar/internal/logger"
 )
 
 type Token struct {
@@ -19,8 +21,16 @@ type Token struct {
 	Origin       string    `gorm:"not null;uniqueIndex:idx_tokens_origin"` // slack
 	OriginID     string    `gorm:"not null;uniqueIndex:idx_tokens_origin"` // slack=teamid
 	AccessToken  string    `gorm:"not null"`
-	ExpiresAt    int64     `gorm:"not null;index"`
+	ExpiresAt    time.Time `gorm:"not null;index"`
 	RefreshToken string    `gorm:""`
+}
+
+func (t *Token) AsOAuthToken() *oauth2.Token {
+	return &oauth2.Token{
+		AccessToken:  t.AccessToken,
+		RefreshToken: t.RefreshToken,
+		Expiry:       t.ExpiresAt,
+	}
 }
 
 func (t *Token) BeforeCreate(tx *gorm.DB) error {
@@ -28,17 +38,31 @@ func (t *Token) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (t *Token) Source(logger *logrus.Logger) directory.Source {
-	return directory.NewSlackSource(logger, t.OriginID, t.AccessToken)
+func (t *Token) PersonSource(ctx context.Context) PersonSource {
+	switch t.Origin {
+	case "slack":
+		return NewSlackSource(t.OriginID, &oauth2.Token{AccessToken: t.AccessToken})
+	default:
+		panic("unknown source type: " + t.Origin)
+	}
 }
 
-func (t *Token) AsLog() logrus.Fields {
-	return logrus.Fields{
+func (t *Token) IssueSource(ctx context.Context) IssueSource {
+	switch t.Origin {
+	case "atlassian":
+		return NewAtlassianSource(t.OriginID, t)
+	default:
+		panic("unknown source type: " + t.Origin)
+	}
+}
+
+func (t *Token) AsLog() logger.Fields {
+	return logger.Fields{
 		"token.id":            t.ID,
 		"token.account_uuid":  t.AccountUUID,
 		"token.origin":        t.Origin,
 		"token.origin_id":     t.OriginID,
-		"token.expires_at":    t.ExpiresAt,
+		"token.expires_at":    fmt.Sprintf("%d", t.ExpiresAt),
 		"token.refresh_token": t.RefreshToken,
 	}
 }

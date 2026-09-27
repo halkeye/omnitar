@@ -1,4 +1,4 @@
-package directory
+package models
 
 import "testing"
 

@@ -5,14 +5,14 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/sirupsen/logrus"
+	"github.com/halkeye/omnitar/internal/logger"
 )
 
-type RoundTripper struct {
-	Logger *logrus.Logger
-}
+type RoundTripper struct{}
 
 func (t RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	ll := logger.FromContext(req.Context())
+
 	var err error
 	var reqBody []byte
 	var respBody []byte
@@ -24,7 +24,7 @@ func (t RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		req.Body = io.NopCloser(bytes.NewReader(reqBody))
 	}
-	t.Logger.WithFields(logrus.Fields{
+	ll.WithFields(logger.Fields{
 		"req.method":        req.Method,
 		"req.body":          string(reqBody),
 		"req.url":           req.URL.String(),
@@ -44,8 +44,7 @@ func (t RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 	}
-	t.Logger.WithField("resp.status", resp.Status).WithField("resp.body", string(respBody)).Debug("got response")
-	// Do work after the response is received
+	ll.WithField("resp.status", resp.Status).WithField("resp.body", string(respBody)).Debug("got response")
 
 	return resp, err
 }

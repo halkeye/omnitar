@@ -40,7 +40,7 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (target.dataset.method && target instanceof HTMLAnchorElement) {
+  if (target.dataset.method && target.href) {
     event.preventDefault();
     event.stopPropagation();
     fetch(target.href, { method: target.dataset.method })

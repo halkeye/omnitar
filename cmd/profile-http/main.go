@@ -16,11 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sirupsen/logrus"
-
 	root "github.com/halkeye/omnitar"
 	"github.com/halkeye/omnitar/internal/config"
 	api "github.com/halkeye/omnitar/internal/http"
+	"github.com/halkeye/omnitar/internal/logger"
 )
 
 func main() {
@@ -33,47 +32,50 @@ func main() {
 
 	var staticHandler http.Handler
 	if cfg.IsDev() {
-		staticHandler = createViteProxy(cfg.Logger(), "http://localhost:5173")
+		staticHandler, err = createViteProxy("http://localhost:5173")
+		if err != nil {
+			logger.DefaultLogger.WithError(err).Fatal("failed to create Vite proxy")
+		}
 	} else {
 		serverRoot, err := fs.Sub(root.StaticFiles, "static")
 		if err != nil {
-			cfg.Logger().WithError(err).Fatal("chdir to static")
+			logger.DefaultLogger.WithError(err).Fatal("chdir to static")
 		}
 		staticHandler = http.FileServerFS(serverRoot)
 	}
 
-	router := api.New(api.WithLogger(cfg.Logger()), api.WithConfig(cfg), api.WithStaticHandler(staticHandler))
+	router := api.New(api.WithLogger(logger.DefaultLogger), api.WithConfig(cfg), api.WithStaticHandler(staticHandler))
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           router.NewHTTPHandler(),
+		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
-		cfg.Logger().WithField("port", cfg.Port).Info("listening")
+		logger.DefaultLogger.WithField("port", cfg.Port).Info("listening")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			cfg.Logger().WithError(err).Fatal("server failed")
+			logger.DefaultLogger.WithError(err).Fatal("server failed")
 		}
 	}()
 
 	<-ctx.Done()
-	cfg.Logger().Info("shutting down")
+	logger.DefaultLogger.Info("shutting down")
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		cfg.Logger().WithError(err).Error("graceful shutdown failed")
+		logger.DefaultLogger.WithError(err).Error("graceful shutdown failed")
 	}
 }
 
-func createViteProxy(logger *logrus.Logger, target string) http.Handler {
+func createViteProxy(target string) (http.Handler, error) {
 	url, err := url.Parse(target)
 	if err != nil {
-		logger.Fatal(err)
+		return nil, fmt.Errorf("failed to parse Vite server URL: %w", err)
 	}
 	proxy := httputil.NewSingleHostReverseProxy(url)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -82,5 +84,5 @@ func createViteProxy(logger *logrus.Logger, target string) http.Handler {
 		r.URL.Scheme = url.Scheme
 		r.URL.Host = url.Host
 		proxy.ServeHTTP(w, r)
-	})
+	}), nil
 }
