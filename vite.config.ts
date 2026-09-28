@@ -12,7 +12,10 @@ export default defineConfig(({ mode }) => {
       ...(isWebComponent
         ? {
             lib: {
-              entry: resolve(import.meta.dirname, "webcomponent/webcomponent.ts"),
+              entry: resolve(
+                import.meta.dirname,
+                "webcomponent/webcomponent.ts",
+              ),
               formats: ["es"],
               fileName: "webcomponent",
             },

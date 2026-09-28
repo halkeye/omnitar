@@ -16,7 +16,8 @@ from an email can point at this service instead.
 
 | Env var            | Required | Default | Description                                             |
 |--------------------|----------|---------|-----------------------------------------------------------|
-| `SLACK_BOT_TOKENS`  | yes      | —       | A CSV of slack bot tokens with `users:read`, `users:read.email`, and `users.profile:read` in the format of `TEAM_ID:BOT_TOKEN` |
+| `SLACK_CLIENT_ID`  | no      | —       | 
+| `SLACK_CLIENT_SECRET`  | no      | —       | 
 | `PORT`             | no       | `8080`  | HTTP listen port.                                        |
 | `STARTUP_TIMEOUT`  | no       | `2m`    | How long to retry the initial Slack load before exiting. |
 | `LOG_LEVEL`        | no       | `info`  | level (`debug`, `info`, `warn`, `error`).         |

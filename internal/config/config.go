@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/url"
 	"reflect"
-	"time"
 
 	"github.com/halkeye/omnitar/internal/logger"
 	"github.com/halkeye/omnitar/internal/models"
@@ -23,17 +22,15 @@ import (
 
 // config holds all runtime configuration for the service.
 type config struct {
-	AppEnv                 string            `env:"APP_ENV,required" envDefault:"development"`
-	SlackClientID_         string            `env:"SLACK_CLIENT_ID"`
-	SlackClientSecret_     string            `env:"SLACK_CLIENT_SECRET"`
-	AtlassianClientID_     string            `env:"ATLASSIAN_CLIENT_ID"`
-	AtlassianClientSecret_ string            `env:"ATLASSIAN_CLIENT_SECRET"`
-	SlackBotTokens         map[string]string `env:"SLACK_BOT_TOKENS,required"`
-	Port                   string            `env:"PORT,required" envDefault:"8080"`
-	StartupTimeout         time.Duration     `env:"STARTUP_TIMEOUT,required" envDefault:"2m"`
-	LogLevel               string            `env:"LOG_LEVEL,required" envDefault:"info"`
-	SessionKey_            string            `env:"SESSION_KEY,required" envDefault:"omnitar-session-key"`
-	Database_              *gorm.DB          `env:"DATABASE_URL" envDefault:""`
+	AppEnv                 string   `env:"APP_ENV,required" envDefault:"development"`
+	SlackClientID_         string   `env:"SLACK_CLIENT_ID"`
+	SlackClientSecret_     string   `env:"SLACK_CLIENT_SECRET"`
+	AtlassianClientID_     string   `env:"ATLASSIAN_CLIENT_ID"`
+	AtlassianClientSecret_ string   `env:"ATLASSIAN_CLIENT_SECRET"`
+	Port                   string   `env:"PORT,required" envDefault:"8080"`
+	LogLevel               string   `env:"LOG_LEVEL,required" envDefault:"info"`
+	SessionKey_            string   `env:"SESSION_KEY,required" envDefault:"omnitar-session-key"`
+	Database_              *gorm.DB `env:"DATABASE_URL" envDefault:"sqlite://./db.sqlite"`
 }
 
 func (c *config) SetupDB(ctx context.Context) error {

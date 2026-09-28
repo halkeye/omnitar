@@ -9,14 +9,12 @@ COPY package*.json vite.config.ts tsconfig.json ./
 # Install dependencies
 RUN npm ci
 
-# Copy webcomponent source
 COPY webcomponent/ webcomponent/
-
-# Build webcomponent
+COPY app/ app/
 RUN npm run build
 
 # Go build stage
-FROM golang:1.26.5-alpine AS builder
+FROM golang:1.27.0-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -49,7 +47,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 FROM alpine:latest
 
 ENV APP_ENV=production \
-    GIN_MODE=release
+  GIN_MODE=release
 
 # Install runtime dependencies
 RUN apk --no-cache add ca-certificates tzdata
