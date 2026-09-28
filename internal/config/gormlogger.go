@@ -22,12 +22,12 @@ var _ gormiologger.Interface = gormlogrus{}
 
 // Error implements [logger.Interface].
 func (g gormlogrus) Error(ctx context.Context, s string, args ...interface{}) {
-	logger.FromContext(ctx).WithContext(ctx).WithField("component", "gormlogrus").Errorf(s, args)
+	logger.FromContext(ctx).WithContext(ctx).WithField("component", "gormlogrus").Errorf(s, args...)
 }
 
 // Info implements [logger.Interface].
 func (g gormlogrus) Info(ctx context.Context, s string, args ...interface{}) {
-	logger.FromContext(ctx).WithContext(ctx).WithField("component", "gormlogrus").Infof(s, args)
+	logger.FromContext(ctx).WithContext(ctx).WithField("component", "gormlogrus").Infof(s, args...)
 }
 
 // LogMode implements [logger.Interface].
@@ -38,7 +38,7 @@ func (g gormlogrus) LogMode(gormiologger.LogLevel) gormiologger.Interface {
 
 // Warn implements [logger.Interface].
 func (g gormlogrus) Warn(ctx context.Context, s string, args ...interface{}) {
-	logger.FromContext(ctx).WithContext(ctx).WithField("component", "gormlogrus").Warn(s, args)
+	logger.FromContext(ctx).WithContext(ctx).WithField("component", "gormlogrus").Warnf(s, args...)
 }
 
 // Trace implements [logger.Interface].

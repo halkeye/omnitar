@@ -2,7 +2,6 @@ package models
 
 import (
 	"context"
-	"fmt"
 	"time"
 	"uuid"
 
@@ -62,7 +61,7 @@ func (t *Token) AsLog() logger.Fields {
 		"token.account_uuid":  t.AccountUUID,
 		"token.origin":        t.Origin,
 		"token.origin_id":     t.OriginID,
-		"token.expires_at":    fmt.Sprintf("%d", t.ExpiresAt),
+		"token.expires_at":    t.ExpiresAt,
 		"token.refresh_token": t.RefreshToken,
 	}
 }
