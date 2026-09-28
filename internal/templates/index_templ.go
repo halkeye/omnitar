@@ -41,20 +41,52 @@ func Index() templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<script type=\"module\" src=\"/slack/E0AFSMB25HU/webcomponent.js\"></script> <h2 id=\"quick-start\" class=\"anchor-heading\">Quick Start</h2><p>Add the following code to your page.</p><!-- prettier-ignore --> <p><copy-paste>&lt;script type=&quot;module&quot; src=&quot;")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<script type=\"module\" src=\"/account/demo/webcomponent.js\"></script> <h2 id=\"quick-start\" class=\"anchor-heading\">Quick Start</h2><p>Login with slack or atlassian via the buttons on the side of the page</p><p>It will then give you a script tag to add to your html</p><p>Such as</p><!-- prettier-ignore --> <p><copy-paste>&lt;script type=&quot;module&quot; src=&quot;")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(BaseURL(ctx))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `index.templ`, Line: 9, Col: 76}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `index.templ`, Line: 11, Col: 76}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "/slack/E0AFSMB25HU/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p><!-- /prettier-ignore --> <p>Replace <mark>E0AFSMB25HU</mark> with your slack team ID</p><p>Then add a omnitar-card element with an email attribute to your page</p><!-- prettier-ignore --> <p><copy-paste>&lt;omnitar-card email=&quot;slack@gavinmogan.com&quot;&gt;halkeye&lt;/omnitar-card&gt;</copy-paste></p><!-- /prettier-ignore --> <h2>Examples</h2><wa-tab-group><wa-tab panel=\"active\">Active User</wa-tab> <wa-tab panel=\"inactive\">Invalid/Inactive User</wa-tab> <wa-tab-panel name=\"active\" active><p>Is successfully able to find a profile for the given email</p><p><b>Example:</b> <omnitar-card email=\"slack@gavinmogan.com\">halkeye</omnitar-card></p><p>Assuming that user is on your slack, you should get a nice element with full name and a nice little profile card on hover</p></wa-tab-panel> <wa-tab-panel name=\"inactive\" active><p>If no matching profile can be found (bad data, expired, etc)</p><p><b>Example:</b> <omnitar-card email=\"fake@fake.com\">user1234</omnitar-card></p><p>Will show the original tag value, but without any popups</p></wa-tab-panel></wa-tab-group>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "/account/REPLACEME/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p><!-- /prettier-ignore --> <p>Replace <mark>REPLACEME</mark> with your account id (provided after login)</p><p>then you can add <mark>&lt;omnitar-profile&gt;</mark> and <mark>&lt;omnitar-issue&gt;</mark> elements to your page</p><p>For example</p><!-- prettier-ignore --> <p><copy-paste>&lt;omnitar-profile email=&quot;slack@gavinmogan.com&quot;&gt;halkeye&lt;/omnitar-profile&gt;</copy-paste></p><!-- /prettier-ignore --> <h2>Examples</h2><wa-tab-group><wa-tab panel=\"profile-active\">Profile Existing</wa-tab> <wa-tab panel=\"profile-inactive\">Profile Non-existing</wa-tab> <wa-tab panel=\"issue-active\">Issue Existing</wa-tab> <wa-tab panel=\"issue-inactive\">Issue Non-existing</wa-tab> <wa-tab-panel name=\"profile-active\" active><p>Is successfully able to find a profile for the given email</p><p><b>Example:</b> &nbsp;")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templ.Raw(copyPaste("<omnitar-profile email=\"slack@gavinmogan.com\">halkeye</omnitar-profile>")).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</p><p>Assuming that user is on your slack, you should get a nice element with full name and a nice little profile card on hover</p></wa-tab-panel> <wa-tab-panel name=\"profile-inactive\"><p>If no matching profile can be found (bad data, expired, etc)</p><p><b>Example:</b> &nbsp;")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templ.Raw(copyPaste("<omnitar-profile email=\"fake@fake.com\">Any fallback string goes here</omnitar-profile>")).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</p><p>Will show the original tag value, but without any popups</p></wa-tab-panel> <wa-tab-panel name=\"issue-active\"><p>Is successfully able to find an issue for the given issue key</p><p><b>Example:</b> &nbsp;")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templ.Raw(copyPaste("<omnitar-issue issue=\"TEST-200\">TEST-200</omnitar-issue>")).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</p></wa-tab-panel> <wa-tab-panel name=\"issue-inactive\"><p>If no matching issue can be found (bad data, expired, etc)</p><p><b>Example:</b> &nbsp;")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templ.Raw(copyPaste("<omnitar-issue issue=\"TEST-404\">Any fallback string goes here</omnitar-issue>")).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p><p>Will show the original tag value, but without any popups</p></wa-tab-panel></wa-tab-group>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

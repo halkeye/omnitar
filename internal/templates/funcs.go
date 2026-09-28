@@ -2,6 +2,7 @@ package templates
 
 import (
 	"context"
+	"html"
 )
 
 func IsDev(ctx context.Context) bool {
@@ -29,4 +30,8 @@ func Flashes(ctx context.Context) []string {
 func AddFlash(ctx context.Context, flash ...string) context.Context {
 	flashes := Flashes(ctx)
 	return context.WithValue(ctx, FlashesKey, append(flashes, flash...))
+}
+
+func copyPaste(text string) string {
+	return text + "<br /><copy-paste>" + html.EscapeString(text) + "</copy-paste>"
 }
