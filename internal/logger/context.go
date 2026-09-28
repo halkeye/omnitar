@@ -23,7 +23,7 @@ type contextKey string
 
 var loggerKey contextKey = "logger"
 
-func WithLogger(ctx context.Context, logger Logger) context.Context {
+func WithValue(ctx context.Context, logger Logger) context.Context {
 	return context.WithValue(ctx, loggerKey, logger)
 }
 

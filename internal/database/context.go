@@ -12,7 +12,7 @@ type contextKey string
 
 var databaseKey contextKey = "db"
 
-func WithDatabase(ctx context.Context, db Database) context.Context {
+func WithValue(ctx context.Context, db Database) context.Context {
 	return context.WithValue(ctx, databaseKey, db)
 }
 

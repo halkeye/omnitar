@@ -20,6 +20,7 @@ import (
 	"github.com/halkeye/omnitar/internal/http/gintemplrenderer"
 	"github.com/halkeye/omnitar/internal/logger"
 	"github.com/halkeye/omnitar/internal/models"
+	"github.com/halkeye/omnitar/internal/providers"
 	"github.com/halkeye/omnitar/internal/sessions"
 	"github.com/halkeye/omnitar/internal/templates"
 )
@@ -35,8 +36,6 @@ type Deps struct {
 	// token exchange. Empty means the real Slack API. Tests point this at
 	// an httptest.Server.
 	SlackAPIURL string
-
-	providers map[models.OAuthProvider]models.SourceOauthContainer
 }
 
 type RouterOptions func(r *Deps)
@@ -74,16 +73,8 @@ func WithSlackAPIURL(url string) RouterOptions {
 func New(opts ...RouterOptions) http.Handler {
 	d := &Deps{}
 	d.defaultAvatar = DefaultAvatarSVG()
-	d.providers = map[models.OAuthProvider]models.SourceOauthContainer{}
 	for _, opt := range opts {
 		opt(d)
-	}
-
-	if _, ok := d.providers[models.Slack]; !ok {
-		d.providers[models.Slack] = models.SlackSourceOAuth2Config(d.Config.SlackClientID(), d.Config.SlackClientSecret())
-	}
-	if _, ok := d.providers[models.Atlassian]; !ok {
-		d.providers[models.Atlassian] = models.AtlassianSourceOAuth2Config(d.Config.AtlassianClientID(), d.Config.AtlassianClientSecret())
 	}
 
 	if d.Logger != nil {
@@ -101,11 +92,16 @@ func New(opts ...RouterOptions) http.Handler {
 	store := gormsessions.NewStore(d.Config.Database(), true, []byte(d.Config.SessionKey()))
 	ginrouter := gin.New()
 
+	providersObj := providers.New()
+	providersObj.Register(providers.Slack, models.SlackSourceOAuth2Config(d.Config.SlackClientID(), d.Config.SlackClientSecret()))
+	providersObj.Register(providers.Atlassian, models.AtlassianSourceOAuth2Config(d.Config.AtlassianClientID(), d.Config.AtlassianClientSecret()))
+
 	ginrouter.Use(func(c *gin.Context) {
 		ctx := c.Request.Context()
-		ctx = logger.WithLogger(ctx, logrus.NewEntry(d.Logger))
-		ctx = database.WithDatabase(ctx, d.Config.Database())
+		ctx = logger.WithValue(ctx, logrus.NewEntry(d.Logger))
+		ctx = database.WithValue(ctx, d.Config.Database())
 		ctx = context.WithValue(ctx, templates.IsDevKey, d.Config.IsDev())
+		ctx = providers.WithValue(ctx, providersObj)
 		// ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Transport: debugroundtripper.RoundTripper{}})
 		c.Request = c.Request.WithContext(ctx)
 	})

@@ -18,6 +18,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/halkeye/omnitar/internal/logger"
+	"github.com/halkeye/omnitar/internal/providers"
 )
 
 var slackUserIDRegex = regexp.MustCompile(`^U[A-Z0-9]{8,}$`)
@@ -29,8 +30,8 @@ type SlackSource struct {
 	sg           singleflight.Group
 }
 
-func SlackSourceOAuth2Config(clientID string, clientSource string) SourceOauthContainer {
-	return SourceOauthContainer{
+func SlackSourceOAuth2Config(clientID string, clientSource string) providers.SourceOauthContainer {
+	return providers.SourceOauthContainer{
 		Config: oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: clientSource,

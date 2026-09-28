@@ -7,10 +7,8 @@ templ AccountMyPage(account *models.Account, tokens []*models.Token) {
 		<script type="module" src={ "/account/" + account.ID.String() + "/webcomponent.js" }></script>
 		<h2>Account { account.ID.String() }</h2>
 		<p><copy-paste>&lt;script type=&quot;module&quot; src=&quot;{ BaseURL(ctx) }/account/{ account.ID.String() }/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p>
-		<!--
 		<p><omnitar-profile email="slack@gavinmogan.com">gmogan</omnitar-profile></p>
 		<p><omnitar-issue issue="HR-2">HR-2</omnitar-issue></p>
-    -->
 		<h3>
 			Sources 
 			(

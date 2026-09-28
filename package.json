@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@awesome.me/webawesome": "^3.14.0",
+    "@microsoft/fast-element": "^3.0.3",
     "hoverintent": "^2.2.1"
   }
 }

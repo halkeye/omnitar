@@ -21,6 +21,7 @@ import (
 	"github.com/halkeye/omnitar/internal/http/gintemplrenderer"
 	"github.com/halkeye/omnitar/internal/logger"
 	"github.com/halkeye/omnitar/internal/models"
+	"github.com/halkeye/omnitar/internal/providers"
 	"github.com/halkeye/omnitar/internal/sessions"
 	"github.com/halkeye/omnitar/internal/templates"
 )
@@ -237,6 +238,7 @@ func (router *Deps) deleteTokenHandler(c *gin.Context) {
 }
 
 func (router *Deps) handlerProvider(c *gin.Context) {
+	ctx := c.Request.Context()
 	session := sessions.Default(c)
 	state, err := generateRandomState()
 	if err != nil {
@@ -244,8 +246,8 @@ func (router *Deps) handlerProvider(c *gin.Context) {
 		return
 	}
 
-	oauth2Config, ok := router.providers[models.OAuthProvider(c.Param("provider"))]
-	if !ok {
+	oauth2Config := providers.FromContext(ctx).Get(providers.OAuthProvider(c.Param("provider")))
+	if oauth2Config == nil {
 		c.AbortWithError(http.StatusBadRequest, errors.New("unsupported provider"))
 		return
 	}
@@ -265,8 +267,8 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 	ll := logger.FromContext(ctx)
 	session := sessions.Default(c)
 
-	oauth2Config, ok := router.providers[models.OAuthProvider(c.Param("provider"))]
-	if !ok {
+	oauth2Config := providers.FromContext(ctx).Get(providers.OAuthProvider(c.Param("provider")))
+	if oauth2Config == nil {
 		c.AbortWithError(http.StatusBadRequest, errors.New("unsupported provider"))
 		return
 	}
@@ -301,8 +303,8 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 	}
 
 	dbTokens := []*models.Token{}
-	switch models.OAuthProvider(c.Param("provider")) {
-	case models.Slack:
+	switch providers.OAuthProvider(c.Param("provider")) {
+	case providers.Slack:
 		for _, field := range []string{"enterprise", "team"} {
 			extra, ok := token.Extra(field).(map[string]any)
 			ll.WithField("field", field).WithField("extra", extra).Debug("Retrieved extra field from token")
@@ -326,9 +328,7 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 				OriginID:     originID,
 			})
 		}
-	case models.Atlassian:
-		b, _ := json.Marshal(token)
-		ll.Debug(fmt.Sprintf("Retrieved access token %s", string(b)))
+	case providers.Atlassian:
 		client := oauth2Config.Config.Client(ctx, token)
 		resp, err := client.Get("https://api.atlassian.com/oauth/token/accessible-resources")
 		if err != nil {
