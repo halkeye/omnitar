@@ -92,6 +92,8 @@ func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth in
 	}
 
 	person = &Person{
+		Source: "slack",
+
 		ID:        slackID,
 		TeamID:    s.slackOrgID,
 		Email:     slackUserProfile.UserProfile.Email,

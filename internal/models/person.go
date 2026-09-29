@@ -9,6 +9,8 @@ import (
 
 // Person is a single directory entry.
 type Person struct {
+	Source string `json:"source"`
+
 	ID     string `json:"id"`
 	TeamID string `json:"team_id"`
 	Email  string `json:"email"`
