@@ -87,6 +87,10 @@ func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth in
 
 	var person *Person
 
+	if slackUserProfile.Ok == false {
+		return person, &NotFoundError{}
+	}
+
 	person = &Person{
 		ID:        slackID,
 		TeamID:    s.slackOrgID,
@@ -128,6 +132,9 @@ func (s *SlackSource) getUserIdByEmail(ctx context.Context, email string) (strin
 			}
 		}
 		return "", fmt.Errorf("unable to fetch user: %w", err)
+	}
+	if slackUser.Ok == false {
+		return "", &NotFoundError{}
 	}
 	return slackUser.User.ID, nil
 }
