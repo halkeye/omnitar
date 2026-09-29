@@ -1,7 +1,7 @@
 // borrowed from https://raw.githubusercontent.com/o-t-w/copypaste-webcomponent/refs/heads/master/index.js
 // but since its not on unpkg or whatever, just paste it in
 
-let copyPasteTemplate = document.createElement("template");
+const copyPasteTemplate = document.createElement("template");
 copyPasteTemplate.innerHTML = `<style>
 
 .copypaste {
@@ -110,27 +110,27 @@ span::-moz-selection {
 class CopyPaste extends HTMLElement {
   constructor() {
     super();
-    let shadowRoot = this.attachShadow({ mode: "open" });
+    const shadowRoot = this.attachShadow({ mode: "open" });
     shadowRoot.appendChild(copyPasteTemplate.content.cloneNode(true));
   }
 
   connectedCallback() {
-    let copyButton = this.shadowRoot.querySelector("button");
-    let svg = this.shadowRoot.querySelector("svg");
+    const copyButton = this.shadowRoot.querySelector("button");
+    const svg = this.shadowRoot.querySelector("svg");
 
-    var slot = this.shadowRoot.querySelector("slot");
-    var textToCopy = slot.assignedNodes()[0];
-    let span = this.shadowRoot.querySelector("span");
+    const slot = this.shadowRoot.querySelector("slot");
+    const span = this.shadowRoot.querySelector("span");
 
     function selectElementContents(el) {
-      var range = document.createRange();
+      const range = document.createRange();
       range.selectNodeContents(el);
-      var sel = window.getSelection();
+      const sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(range);
     }
 
     function copyText() {
+      const textToCopy = slot.assignedNodes()[0];
       selectElementContents(textToCopy);
       document.execCommand("copy");
       svg.classList.remove("opacity0");
