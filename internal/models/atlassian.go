@@ -2,16 +2,13 @@ package models
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/ctreminiom/go-atlassian/pkg/infra/models"
-	"gorm.io/gorm"
 
 	"github.com/coocood/freecache"
 	"github.com/eko/gocache/lib/v4/cache"
@@ -20,8 +17,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/halkeye/omnitar/internal/database"
-	"github.com/halkeye/omnitar/internal/logger"
+	"github.com/halkeye/omnitar/internal/cachefetch"
 	"github.com/halkeye/omnitar/internal/providers"
 )
 
@@ -86,8 +82,7 @@ func (s *AtlassianSource) LookupIssue(ctx context.Context, issueKey string) (*Is
 		Name string `json:"name"`
 	}
 
-	resources := []*accessibleResources{}
-	err := s.fetch(ctx, "https://api.atlassian.com/oauth/token/accessible-resources", &resources)
+	resources, err := cachefetch.Fetch[[]*accessibleResources](ctx, s.token, "https://api.atlassian.com/oauth/token/accessible-resources")
 	if err != nil {
 		return nil, err
 	}
@@ -107,77 +102,12 @@ func (s *AtlassianSource) LookupIssue(ctx context.Context, issueKey string) (*Is
 	return issue, nil
 }
 
-func (s *AtlassianSource) fetch(ctx context.Context, url string, target any) error {
-	val, err, _ := s.sg.Do(url, func() (any, error) {
-		cacheVal, err := s.cacheManager.Get(ctx, url)
-		if err != nil && !(store.NotFound{}).Is(err) {
-			return nil, fmt.Errorf("cache get: %w", err)
-		}
-
-		if cacheVal != nil {
-			return cacheVal, nil
-		}
-
-		oauth2Config := providers.FromContext(ctx).Get(providers.Atlassian)
-		tokenSource := oauth2Config.Config.TokenSource(ctx, s.token.AsOAuthToken())
-		newToken, err := tokenSource.Token()
-		if err != nil {
-			return nil, fmt.Errorf("failed to refresh token: %w", err)
-		}
-
-		if newToken.AccessToken != s.token.AccessToken {
-			db := database.FromContext(ctx)
-			_, err := gorm.G[Token](db).Where("id = ?", s.token.ID).Updates(ctx, Token{
-				ID:           s.token.ID,
-				AccessToken:  newToken.AccessToken,
-				RefreshToken: newToken.RefreshToken,
-				ExpiresAt:    newToken.Expiry,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to update token in database: %w", err)
-			}
-		}
-		client := oauth2.NewClient(ctx, tokenSource)
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to make request: %w", err)
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("failed to do request: %w", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != 200 {
-			return nil, fmt.Errorf("bad request to atlassian - %s - %d", url, resp.StatusCode)
-		}
-
-		err = json.NewDecoder(resp.Body).Decode(&target)
-		if err != nil {
-			return nil, fmt.Errorf("unable to decode body into target")
-		}
-
-		err = s.cacheManager.Set(ctx, url, cacheVal, store.WithExpiration(time.Hour))
-		if err != nil {
-			logger.FromContext(ctx).WithField("url", url).WithField("size", len(cacheVal)).WithError(err).Error("cache set")
-		}
-
-		return nil, nil
-	})
-	if err != nil {
-		target = val
-	}
-	return err
-}
-
 func (s *AtlassianSource) getIssue(ctx context.Context, siteURL, issueKey string) (*Issue, error) {
 
 	u := s.baseURL.Clone().JoinPath("rest/api/3/issue/", issueKey)
 	u.RawQuery = url.Values{"fields": []string{"key,summary,issuetype,project.key,fields.project,statusCategory,resolution,priority,status,reporter,assignee"}}.Encode()
 
-	var jiraIssue models.IssueSchemeV2
-	err := s.fetch(ctx, u.String(), &jiraIssue)
+	jiraIssue, err := cachefetch.Fetch[models.IssueSchemeV2](ctx, s.token, u.String())
 	if err != nil {
 		return nil, err
 	}

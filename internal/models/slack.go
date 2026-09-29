@@ -5,29 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
-	"time"
 
-	"github.com/coocood/freecache"
-	"github.com/eko/gocache/lib/v4/cache"
-	"github.com/eko/gocache/lib/v4/store"
-	freecache_store "github.com/eko/gocache/store/freecache/v4"
-	clone "github.com/huandu/go-clone/generic"
 	"github.com/slack-go/slack"
 	"golang.org/x/oauth2"
-	"golang.org/x/sync/singleflight"
 
-	"github.com/halkeye/omnitar/internal/logger"
+	"github.com/halkeye/omnitar/internal/cachefetch"
 	"github.com/halkeye/omnitar/internal/providers"
 )
 
 var slackUserIDRegex = regexp.MustCompile(`^U[A-Z0-9]{8,}$`)
 
 type SlackSource struct {
-	client       *slack.Client
-	slackOrgID   string
-	cacheManager *cache.Cache[[]byte]
-	sg           singleflight.Group
+	slackOrgID string
+	token      *Token
 }
 
 func SlackSourceOAuth2Config(clientID string, clientSource string) providers.SourceOauthContainer {
@@ -47,13 +39,10 @@ func SlackSourceOAuth2Config(clientID string, clientSource string) providers.Sou
 }
 
 // NewSlackSource returns a Source backed by the given Slack bot token.
-func NewSlackSource(slackOrgID string, token *oauth2.Token) *SlackSource {
-	freecacheStore := freecache_store.NewFreecache(freecache.NewCache(1024*1000), store.WithExpiration(10*time.Second))
-
+func NewSlackSource(slackOrgID string, token *Token) *SlackSource {
 	return &SlackSource{
-		slackOrgID:   slackOrgID,
-		client:       slack.New(token.AccessToken),
-		cacheManager: cache.New[[]byte](freecacheStore),
+		slackOrgID: slackOrgID,
+		token:      token,
 	}
 }
 
@@ -75,104 +64,72 @@ func (s *SlackSource) LookupPerson(ctx context.Context, email string) (*Person, 
 	return person, nil
 }
 
+type slackWrapperUserProfile struct {
+	Ok          bool              `json:"ok"`
+	UserProfile slack.UserProfile `json:"profile"`
+}
+
 func (s *SlackSource) getUser(ctx context.Context, slackID string, fetchDepth int) (*Person, error) {
-	val, err, _ := s.sg.Do(slackID, func() (any, error) {
-		var person *Person
-		cacheVal, err := s.cacheManager.Get(ctx, slackID)
-		if err != nil && !(store.NotFound{}).Is(err) {
-			return nil, fmt.Errorf("cache get: %w", err)
-		}
-
-		if cacheVal != nil {
-			if len(cacheVal) == 0 {
-				return person, &NotFoundError{}
-			}
-			err = json.Unmarshal(cacheVal, &person)
-			if err != nil {
-				return nil, fmt.Errorf("cache unmarshal: %w", err)
-			}
-			return person, nil
-		}
-
-		slackUserProfile, err := s.client.GetUserProfile(&slack.GetUserProfileParameters{UserID: slackID, IncludeLabels: true})
-		if err != nil {
-			if slackErr, ok := errors.AsType[slack.SlackErrorResponse](err); ok {
-				if slackErr.Error() == "users_not_found" {
-					s.cacheManager.Set(ctx, slackID, []byte{}, store.WithExpiration(time.Hour))
-					return person, &NotFoundError{}
-				}
-			}
-			return nil, fmt.Errorf("slack users.profile.get: %w", err)
-		}
-
-		person = &Person{
-			ID:        slackID,
-			TeamID:    s.slackOrgID,
-			Email:     slackUserProfile.Email,
-			Name:      displayName(slackUserProfile, slackUserProfile.Email),
-			AvatarURL: avatarURL(slackUserProfile),
-			Fields:    map[string]string{},
-		}
-
-		for _, field := range slackUserProfile.Fields.ToMap() {
-			person.Fields[field.Label] = field.Value
-			if fetchDepth >= 1 && slackUserIDRegex.MatchString(field.Value) {
-				parent, err := s.getUser(ctx, field.Value, fetchDepth-1)
-				if err == nil {
-					person.Fields[field.Label] = parent.Name
-				}
-			}
-		}
-
-		cacheVal, err = json.Marshal(person)
-		if err != nil {
-			return nil, fmt.Errorf("cache marshal: %w", err)
-		}
-		err = s.cacheManager.Set(ctx, slackID, cacheVal, store.WithExpiration(time.Hour))
-		if err != nil {
-			logger.FromContext(ctx).WithField("slackID", slackID).WithField("size", len(cacheVal)).WithError(err).Warn("cache set")
-		}
-		return person, nil
-	})
+	queryString := url.Values{"include_labels": []string{"true"}, "user": []string{slackID}}.Encode()
+	slackUserProfile, err := cachefetch.Fetch[slackWrapperUserProfile](ctx, s.token, "https://slack.com/api/users.profile.get?"+queryString)
 	if err != nil {
-		return nil, err
+		if val, ok := errors.AsType[cachefetch.HttpError](err); ok {
+			var slackErr slack.SlackErrorResponse
+			if decodeErr := json.Unmarshal(val.Body, &slackErr); decodeErr != nil {
+				if slackErr.Error() == "users_not_found" {
+					return nil, &NotFoundError{}
+				}
+				err = slackErr
+			}
+		}
+		return nil, fmt.Errorf("unable to fetch user: %w", err)
 	}
-	return new(clone.Clone[Person](*(val.(*Person)))), nil
+
+	var person *Person
+
+	person = &Person{
+		ID:        slackID,
+		TeamID:    s.slackOrgID,
+		Email:     slackUserProfile.UserProfile.Email,
+		Name:      displayName(&slackUserProfile.UserProfile, slackUserProfile.UserProfile.Email),
+		AvatarURL: avatarURL(&slackUserProfile.UserProfile),
+		Fields:    map[string]string{},
+	}
+
+	for _, field := range slackUserProfile.UserProfile.Fields.ToMap() {
+		person.Fields[field.Label] = field.Value
+		if fetchDepth >= 1 && slackUserIDRegex.MatchString(field.Value) {
+			parent, err := s.getUser(ctx, field.Value, fetchDepth-1)
+			if err == nil {
+				person.Fields[field.Label] = parent.Name
+			}
+		}
+	}
+
+	return person, nil
+}
+
+type slackWrapperUser struct {
+	Ok   bool       `json:"ok"`
+	User slack.User `json:"user"`
 }
 
 func (s *SlackSource) getUserIdByEmail(ctx context.Context, email string) (string, error) {
-	cacheKey := fmt.Sprintf("email-to-slackid:%s", email)
-	val, err, _ := s.sg.Do(cacheKey, func() (any, error) {
-		cacheVal, err := s.cacheManager.Get(ctx, cacheKey)
-		if err != nil && !(store.NotFound{}).Is(err) {
-			return nil, fmt.Errorf("cache get: %w", err)
-		}
-
-		if cacheVal != nil {
-			return string(cacheVal), nil
-		}
-
-		slackUser, err := s.client.GetUserByEmailContext(ctx, email)
-		if err != nil {
-			if slackErr, ok := errors.AsType[slack.SlackErrorResponse](err); ok {
-				if slackErr.Error() == "users_not_found" {
-					s.cacheManager.Set(ctx, cacheKey, []byte{}, store.WithExpiration(time.Hour))
-					return nil, &NotFoundError{}
-				}
-			}
-			return nil, fmt.Errorf("slack users.profile.get: %w", err)
-		}
-
-		err = s.cacheManager.Set(ctx, cacheKey, []byte(slackUser.ID), store.WithExpiration(time.Hour))
-		if err != nil {
-			logger.FromContext(ctx).WithField("slackID", slackUser.ID).WithError(err).Error("cache set failed")
-		}
-		return slackUser.ID, nil
-	})
+	queryString := url.Values{"email": []string{email}}.Encode()
+	slackUser, err := cachefetch.Fetch[slackWrapperUser](ctx, s.token, "https://slack.com/api/users.lookupByEmail?"+queryString)
 	if err != nil {
-		return "", err
+		if val, ok := errors.AsType[cachefetch.HttpError](err); ok {
+			var slackErr slack.SlackErrorResponse
+			if decodeErr := json.Unmarshal(val.Body, &slackErr); decodeErr != nil {
+				if slackErr.Error() == "users_not_found" {
+					return "", &NotFoundError{}
+				}
+				err = slackErr
+			}
+		}
+		return "", fmt.Errorf("unable to fetch user: %w", err)
 	}
-	return val.(string), nil
+	return slackUser.User.ID, nil
 }
 
 func displayName(u *slack.UserProfile, email string) string {

@@ -320,13 +320,7 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 				continue
 			}
 
-			dbTokens = append(dbTokens, &models.Token{
-				AccessToken:  token.AccessToken,
-				RefreshToken: token.RefreshToken,
-				ExpiresAt:    token.Expiry,
-				Origin:       "slack",
-				OriginID:     originID,
-			})
+			dbTokens = append(dbTokens, models.FromOauthToken(uuid.Nil(), "slack", originID, token))
 		}
 	case providers.Atlassian:
 		client := oauth2Config.Config.Client(ctx, token)
@@ -357,13 +351,7 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 		}
 
 		for _, ar := range resources {
-			dbTokens = append(dbTokens, &models.Token{
-				AccessToken:  token.AccessToken,
-				RefreshToken: token.RefreshToken,
-				ExpiresAt:    token.Expiry,
-				Origin:       "atlassian",
-				OriginID:     ar.ID,
-			})
+			dbTokens = append(dbTokens, models.FromOauthToken(uuid.Nil(), "atlassian", ar.ID, token))
 		}
 	}
 
