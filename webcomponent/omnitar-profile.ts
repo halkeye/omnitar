@@ -15,6 +15,7 @@ import {
 } from "@microsoft/fast-element";
 import cachedFetch from "./util-cached-fetch.ts";
 import hoverIntent from "hoverintent";
+import svgSlack from "./assets/slack.svg";
 
 import { enableDebug } from "@microsoft/fast-element/debug.js";
 
@@ -114,6 +115,23 @@ const cssHasProfile = css`
     display: inline-block;
     text-decoration-line: underline;
     text-decoration-style: dashed;
+    text-decoration-color: #9ca3af;
+    text-underline-offset: 2px;
+  }
+
+  .display-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration-line: underline;
+    text-decoration-style: dashed;
+    text-decoration-color: #9ca3af;
+    text-underline-offset: 2px;
+  }
+
+  .display-name img {
+    width: 1em;
+    height: 1em;
   }
 
   .card {
@@ -240,7 +258,10 @@ const profileTemplateHTML = html<OmnitarProfileElement>`
       (x) => !x.profileData,
       html<OmnitarProfileElement>`<slot></slot>`,
       html<OmnitarProfileElement>`
-        <span class="display-name">🪪 ${(x) => x.profileData!.name}</span>
+        <span class="display-name">
+          <img class="icon" src=${svgSlack} alt="Slack" />
+          ${(x) => x.profileData!.name}
+        </span>
         <div class="card hide">
           <div style="height: 100%">
             <img
@@ -254,7 +275,7 @@ const profileTemplateHTML = html<OmnitarProfileElement>`
             <div class="email">${(x) => x.profileData!.email}</div>
             <dl class="fields">
               ${repeat(
-                (x) => Object.entries(x.profileData!.fields),
+                (x) => Object.entries(x.profileData!.fields ?? {}),
                 html`
                   <dt>${(x) => x[0]}</dt>
                   <dd>${(x) => x[1]}</dd>

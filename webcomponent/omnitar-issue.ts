@@ -120,11 +120,23 @@ const cssHasProfile = css`
     display: inline-block;
     text-decoration-line: underline;
     text-decoration-style: dashed;
+    text-decoration-color: #9ca3af;
+    text-underline-offset: 2px;
+  }
+
+  .display-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration-line: underline;
+    text-decoration-style: dashed;
+    text-decoration-color: #9ca3af;
+    text-underline-offset: 2px;
   }
 
   .display-name img {
+    width: 1em;
     height: 1em;
-    weidth: 1em;
   }
 
   .card {
@@ -132,13 +144,11 @@ const cssHasProfile = css`
     top: 75%;
     left: 0;
     margin-top: 8px;
-    display: grid;
-    align-items: start;
-    gap: 10px;
-    padding: 12px 14px;
-    width: max-content;
-    min-width: 220px;
-    max-width: 500px;
+    display: block;
+    box-sizing: border-box;
+    padding: 14px;
+    width: min(360px, calc(100vw - 24px));
+    min-width: 240px;
     background: #fff;
     color: #1b1b1b;
     border: 1px solid #e4e4e7;
@@ -164,7 +174,7 @@ const cssHasProfile = css`
 
   /* override the generic .hide (display:none) so we can animate instead */
   .card.hide {
-    display: grid !important;
+    display: block !important;
     opacity: 0;
     transform: translateY(-4px);
     pointer-events: none;
@@ -184,30 +194,82 @@ const cssHasProfile = css`
     transform: rotate(45deg);
   }
 
-  .card img {
-    height: 2em;
-    weidth: 2em;
-    vertical-align: middle;
+  .issue-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .issue-type-icon {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin-top: 1px;
+    object-fit: contain;
+  }
+
+  .issue-summary {
+    min-width: 0;
+  }
+
+  .issue-key {
+    margin-right: 6px;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+  }
+
+  .issue-title {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+
+  .issue-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    margin-top: 12px;
+    color: #4b5563;
+    font-size: 12px;
+  }
+
+  .meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .meta-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    object-fit: contain;
   }
 
   .status-pill {
-    background-color: #ddd;
-    border: none;
-    color: black;
-    padding: 10px 20px;
-    text-align: center;
-    text-decoration: none;
-    display: inline-block;
-    margin: 4px 2px;
-    cursor: pointer;
-    border-radius: 16px;
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    box-sizing: border-box;
+    padding: 2px 8px;
+    border-radius: 999px;
+    color: #1f2937;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
   }
 
   .card dl.fields {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 2px 6px;
-    margin: 6px 0 8px;
+    gap: 4px 8px;
+    margin: 12px 0;
     font-size: 12px;
     color: #444;
   }
@@ -219,14 +281,21 @@ const cssHasProfile = css`
 
   .card dl.fields dd {
     margin: 0;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .button-link {
-    display: inline-block;
-    padding: 6px 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    box-sizing: border-box;
+    padding: 5px 12px;
     font-size: 12px;
+    font-weight: 600;
     background-color: #4a154b; /* Slack purple */
     color: white; /* Text color */
     text-decoration: none; /* Remove underline */
@@ -238,6 +307,11 @@ const cssHasProfile = css`
   .button-link:hover {
     background-color: #611f69; /* Darker shade on hover */
   }
+
+  .button-link:focus-visible {
+    outline: 2px solid #4a154b;
+    outline-offset: 2px;
+  }
 `;
 
 const issueTemplateHTML = html<OmnitarIssueElement>`
@@ -246,60 +320,68 @@ const issueTemplateHTML = html<OmnitarIssueElement>`
       (x) => !x.issueData,
       html<OmnitarIssueElement>`<slot></slot>`,
       html<OmnitarIssueElement>`
-        <span class="display-name"
-          ><span
-            ><img class="icon" src=${svgJira} alt="jira icon" /> ${(x) =>
-              x.issueData!.key}</span
-          ></span
-        >
+        <span class="display-name">
+          <img class="icon" src=${svgJira} alt="Jira" />
+          ${(x) => x.issueData!.key}
+        </span>
         <div class="card hide">
-          <div>
-            <div>
-              <img
-                @error=${(x) => {
-                  x.issueData! = { ...x.issueData!, issue_type_icon: svgJira };
-                }}
-                src="${(x) => x.issueData!.issue_type_icon}"
-                alt="${(x) => x.issueData!.issue_type} icon"
-              />
-              ${(x) => x.issueData!.key}: ${(x) => x.issueData!.title}
+          <div class="issue-heading">
+            <img
+              class="issue-type-icon"
+              @error=${(x) => {
+                x.issueData! = { ...x.issueData!, issue_type_icon: svgJira };
+              }}
+              src="${(x) => x.issueData!.issue_type_icon}"
+              alt="${(x) => x.issueData!.issue_type}"
+            />
+            <div class="issue-summary">
+              <span class="issue-key">${(x) => x.issueData!.key}</span>
+              <span class="issue-title">${(x) => x.issueData!.title}</span>
             </div>
-            <div>
+          </div>
+          <div class="issue-meta">
+            <span class="meta-item">
               <img
+                class="meta-icon"
                 src="${(x) => x.issueData!.reporter_icon}"
-                alt="reporter(${(x) => x.issueData!.reporter}) icon"
+                alt="Reporter: ${(x) => x.issueData!.reporter}"
               />
-              <div
-                class="status-pill"
-                style="background-color: ${(x) => x.issueData!.status_color}"
-              >
-                ${(x) => x.issueData!.status}
-              </div>
+              ${(x) => x.issueData!.reporter}
+            </span>
+            <span
+              class="status-pill"
+              style="background-color: ${(x) => x.issueData!.status_color}"
+            >
+              ${(x) => x.issueData!.status}
+            </span>
+            <span class="meta-item">
               <img
+                class="meta-icon"
                 @error=${(x) => {
                   x.issueData! = { ...x.issueData!, priority_icon: svgJira };
                 }}
                 src="${(x) => x.issueData!.priority_icon}"
-                alt="priority (${(x) => x.issueData!.priority}) icon"
+                alt="Priority: ${(x) => x.issueData!.priority}"
               />
               ${(x) => x.issueData!.priority}
-            </div>
-            <dl class="fields">
-              ${repeat(
-                (x) => Object.entries(x.issueData!.fields),
-                html`
-                  <dt>${(x) => x[0]}</dt>
-                  <dd>${(x) => x[1]}</dd>
-                `,
-              )}
-            </dl>
-            <a
-              class="message-link button-link"
-              href="${(x) => x.issueData!.url}"
-              target="_blank"
-              >View</a
-            >
+            </span>
           </div>
+          <dl class="fields">
+            ${repeat(
+              (x) => Object.entries(x.issueData!.fields),
+              html`
+                <dt>${(x) => x[0]}</dt>
+                <dd>${(x) => x[1]}</dd>
+              `,
+            )}
+          </dl>
+          <a
+            class="message-link button-link"
+            href="${(x) => x.issueData!.url}"
+            target="_blank"
+            rel="noopener noreferrer"
+            >View issue</a
+          >
         </div>
       `,
     )}
