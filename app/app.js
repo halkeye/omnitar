@@ -106,8 +106,12 @@ document.addEventListener("click", (event) => {
         if (!response.ok) {
           throw new Error(response.statusText);
         }
+        if (response.redirected) {
+          location.href = response.url;
+          return;
+        }
+        location.reload();
       })
-      .then(() => location.reload())
       .catch((error) => alert(error));
   }
 });

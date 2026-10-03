@@ -233,6 +233,20 @@ func (router *Deps) deleteTokenHandler(c *gin.Context) {
 		return
 	}
 
+	remaining, err := gorm.G[*models.Token](database.FromContext(ctx)).Where(models.Token{AccountUUID: dbAccount.ID}).Count(ctx, "*")
+	if err != nil {
+		c.AbortWithError(http.StatusInternalServerError, fmt.Errorf("failed to count remaining tokens: %w", err))
+		return
+	}
+	if remaining == 0 {
+		// No tokens left: log the user out
+		session.Clear()
+		session.AddFlash("logged out")
+		sessions.MustSave(session)
+		c.Redirect(http.StatusFound, "/")
+		return
+	}
+
 	session.AddFlash("Token deleted successfully.")
 	c.Status(http.StatusNoContent)
 }

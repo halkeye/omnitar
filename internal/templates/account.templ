@@ -21,7 +21,7 @@ templ AccountMyPage(account *models.Account, tokens []*models.Token) {
 					<td>{ token.Origin }</td>
 					<td>{ token.OriginID }</td>
 					<td>
-						<wa-button variant="danger" data-method="delete" data-confirm="really delete?" href={ "/auth/token/" + token.ID.String() }>Delete</wa-button>
+						<wa-button variant="danger" data-method="delete" data-confirm={ tokenDeleteConfirm(len(tokens) == 1) } href={ "/auth/token/" + token.ID.String() }>Delete</wa-button>
 					</td>
 				</tr>
 			}

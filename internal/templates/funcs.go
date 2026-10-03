@@ -35,3 +35,10 @@ func AddFlash(ctx context.Context, flash ...string) context.Context {
 func copyPaste(text string) string {
 	return text + "<br /><copy-paste>" + html.EscapeString(text) + "</copy-paste>"
 }
+
+func tokenDeleteConfirm(isLast bool) string {
+	if isLast {
+		return "Deleting your last token will log you out and your account will not be recoverable. Really delete?"
+	}
+	return "really delete?"
+}
