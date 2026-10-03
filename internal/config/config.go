@@ -8,14 +8,18 @@ import (
 	"io"
 	"net/url"
 	"reflect"
+	"strconv"
+	"strings"
 
 	"github.com/halkeye/omnitar/internal/logger"
 	"github.com/halkeye/omnitar/internal/models"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/glebarez/sqlite"
+	gomysql "github.com/go-sql-driver/mysql"
 	"github.com/sirupsen/logrus"
 
+	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -91,8 +95,45 @@ func parseDatabase(v string) (any, error) {
 			return nil, fmt.Errorf("failed to connect to database: %w", err)
 		}
 		return *db, nil
+	case "mysql", "mariadb":
+		db, err := gorm.Open(gormmysql.Open(mysqlDSN(parsedURL)), &gorm.Config{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to database: %w", err)
+		}
+		return *db, nil
 	}
 	return nil, errors.New("unknown type")
+}
+
+// mysqlDSN converts a URL (mysql://user:pass@host:port/dbname?parseTime=true)
+// into the DSN format the go-sql-driver expects.
+func mysqlDSN(parsedURL *url.URL) string {
+	dsnCfg := gomysql.NewConfig()
+	if parsedURL.User != nil {
+		dsnCfg.User = parsedURL.User.Username()
+		dsnCfg.Passwd, _ = parsedURL.User.Password()
+	}
+	dsnCfg.Net = "tcp"
+	dsnCfg.Addr = parsedURL.Host
+	dsnCfg.DBName = strings.TrimPrefix(parsedURL.Path, "/")
+	dsnCfg.ParseTime = true
+	if query := parsedURL.Query(); len(query) > 0 {
+		dsnCfg.Params = make(map[string]string, len(query))
+		for key, values := range query {
+			if len(values) == 0 {
+				continue
+			}
+			value := values[len(values)-1]
+			if strings.EqualFold(key, "parseTime") {
+				if parseTime, err := strconv.ParseBool(value); err == nil {
+					dsnCfg.ParseTime = parseTime
+				}
+				continue
+			}
+			dsnCfg.Params[key] = value
+		}
+	}
+	return dsnCfg.FormatDSN()
 }
 
 func Load() (*config, error) {
