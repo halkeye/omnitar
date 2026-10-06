@@ -1,7 +1,9 @@
 # Node.js build stage for webcomponent
-FROM node:22-alpine AS node-builder
+FROM node:24-alpine AS node-builder
 
 WORKDIR /build
+
+ENV NODE_ENV=development
 
 # Copy package files
 COPY package*.json vite.config.ts tsconfig.json ./
