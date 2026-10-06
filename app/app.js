@@ -20,10 +20,17 @@ import "@awesome.me/webawesome/dist/components/tab-panel/tab-panel.js";
 if (window.location.pathname === "/") {
   const ogFetch = window.fetch;
   window.fetch = async function fakeFetch(url) {
-    if (url.endsWith("/account/demo/profiles/auto/fake@fake.com")) {
+    const parsedUrl = new URL(url);
+    if (
+      parsedUrl.pathname.endsWith("/account/demo/profiles/auto/fake@fake.com")
+    ) {
       return new Response("", { status: 404 });
     }
-    if (url.endsWith("/account/demo/profiles/auto/slack@gavinmogan.com")) {
+    if (
+      parsedUrl.pathname.endsWith(
+        "/account/demo/profiles/auto/slack@gavinmogan.com",
+      )
+    ) {
       return new Response(
         JSON.stringify({
           id: "U0AGP1U9L0G",
@@ -40,10 +47,10 @@ if (window.location.pathname === "/") {
         }),
       );
     }
-    if (url.endsWith("/account/demo/issues/auto/TEST-404")) {
+    if (parsedUrl.pathname.endsWith("/account/demo/issues/auto/TEST-404")) {
       return new Response("", { status: 404 });
     }
-    if (url.endsWith("/account/demo/issues/auto/TEST-200")) {
+    if (parsedUrl.pathname.endsWith("/account/demo/issues/auto/TEST-200")) {
       return new Response(
         JSON.stringify({
           source: "jira",
@@ -70,7 +77,6 @@ if (window.location.pathname === "/") {
         }),
       );
     }
-    console.log("fetching", url);
     return ogFetch(...arguments);
   };
 }

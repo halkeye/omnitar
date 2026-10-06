@@ -54,7 +54,7 @@ func Index() templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "/account/REPLACEME/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p><!-- /prettier-ignore --> <p>Replace <mark>REPLACEME</mark> with your account id (provided after login)</p><p>then you can add <mark>&lt;omnitar-profile&gt;</mark> and <mark>&lt;omnitar-issue&gt;</mark> elements to your page</p><p>For example</p><!-- prettier-ignore --> <p><copy-paste>&lt;omnitar-profile email=&quot;slack@gavinmogan.com&quot;&gt;halkeye&lt;/omnitar-profile&gt;</copy-paste></p><!-- /prettier-ignore --> <h2>Examples</h2><wa-tab-group><wa-tab panel=\"profile-active\">Profile Existing</wa-tab> <wa-tab panel=\"profile-inactive\">Profile Non-existing</wa-tab> <wa-tab panel=\"issue-active\">Issue Existing</wa-tab> <wa-tab panel=\"issue-inactive\">Issue Non-existing</wa-tab> <wa-tab-panel name=\"profile-active\" active><p>Is successfully able to find a profile for the given email</p><p><b>Example:</b> &nbsp;")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "/account/REPLACEME/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p><!-- /prettier-ignore --> <p>Replace <mark>REPLACEME</mark> with your account id (provided after login)</p><p>then you can add <mark>&lt;omnitar-profile&gt;</mark> and <mark>&lt;omnitar-issue&gt;</mark> elements to your page</p><p>For example</p><!-- prettier-ignore --> <p><copy-paste>&lt;omnitar-profile email=&quot;slack@gavinmogan.com&quot;&gt;halkeye&lt;/omnitar-profile&gt;</copy-paste></p><!-- /prettier-ignore --> <h2>Examples</h2><wa-tab-group><wa-tab panel=\"profile-active\">Profile Existing</wa-tab> <wa-tab panel=\"profile-inactive\">Profile Non-existing</wa-tab> <wa-tab panel=\"profile-limitedFields\">Profile Limited FIelds</wa-tab> <wa-tab panel=\"issue-active\">Issue Existing</wa-tab> <wa-tab panel=\"issue-inactive\">Issue Non-existing</wa-tab> <wa-tab-panel name=\"profile-active\" active><p>Is successfully able to find a profile for the given email</p><p><b>Example:</b> &nbsp;")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -70,7 +70,15 @@ func Index() templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</p><p>Will show the original tag value, but without any popups</p></wa-tab-panel> <wa-tab-panel name=\"issue-active\"><p>Is successfully able to find an issue for the given issue key</p><p><b>Example:</b> &nbsp;")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</p><p>Will show the original tag value, but without any popups</p></wa-tab-panel> <wa-tab-panel name=\"profile-limitedFields\"><p><b>Example:</b> &nbsp;")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templ.Raw(copyPaste("<omnitar-profile email=\"slack@gavinmogan.com\" fields=\"name,Country\">halkeye</omnitar-profile>")).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</p></wa-tab-panel> <wa-tab-panel name=\"issue-active\"><p>Is successfully able to find an issue for the given issue key</p><p><b>Example:</b> &nbsp;")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -78,7 +86,7 @@ func Index() templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</p></wa-tab-panel> <wa-tab-panel name=\"issue-inactive\"><p>If no matching issue can be found (bad data, expired, etc)</p><p><b>Example:</b> &nbsp;")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p></wa-tab-panel> <wa-tab-panel name=\"issue-inactive\"><p>If no matching issue can be found (bad data, expired, etc)</p><p><b>Example:</b> &nbsp;")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -86,7 +94,7 @@ func Index() templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p><p>Will show the original tag value, but without any popups</p></wa-tab-panel></wa-tab-group>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</p><p>Will show the original tag value, but without any popups</p></wa-tab-panel></wa-tab-group>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

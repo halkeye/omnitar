@@ -12,6 +12,7 @@ import {
   observable,
   repeat,
   when,
+  type ValueConverter,
 } from "@microsoft/fast-element";
 import cachedFetch from "./util-cached-fetch.ts";
 import hoverIntent from "hoverintent";
@@ -28,11 +29,30 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+export const csvConverter: ValueConverter = {
+  // Converts the attribute string from the HTML to a JavaScript array
+  fromView(value: string | null): string[] {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value;
+    }
+    return value.split(",").map((item) => item.trim());
+  },
+
+  // Converts the JavaScript array back to a CSV string for the HTML attribute
+  toView(value: any[] | null): string | null {
+    if (!value || !Array.isArray(value)) return null;
+    return value.join(",");
+  },
+};
+
 class OmnitarProfileElement extends FASTElement {
   @attr
   source: string = "auto";
   @attr
   email?: string;
+  @attr({ converter: csvConverter })
+  fields: Array<string> = [];
   @observable
   profileData: Profile | null = null;
 
@@ -46,18 +66,48 @@ class OmnitarProfileElement extends FASTElement {
     }
   }
 
+  _fetch() {
+    if (!this.email) {
+      return;
+    }
+
+    const email = normalizeEmail(this.email);
+    let url = `${scriptOrigin}/account/${encodeURI(accountUUID)}/profiles/${encodeURI(this.source)}/${encodeURI(email)}`;
+    if (this.fields.length != 0) {
+      url += "?fields=" + encodeURI(this.fields.join("."));
+    }
+
+    cachedFetch(url).then((profileData) => {
+      if (profileData && this.fields.length > 0) {
+        ["email", "name"].forEach((field) => {
+          if (!this.fields.includes(field)) {
+            delete profileData[field];
+          }
+        });
+        Object.keys(profileData.fields ?? {}).forEach((field) => {
+          if (!this.fields.includes(field)) {
+            delete profileData.fields[field];
+          }
+        });
+      }
+      this.profileData = profileData;
+    });
+  }
+
   emailChanged(_: string, newValue?: string) {
     if (!newValue) {
       this.profileData = null;
       return;
     }
+    this._fetch();
+  }
 
-    newValue = normalizeEmail(newValue);
-    cachedFetch(
-      `${scriptOrigin}/account/${encodeURI(accountUUID)}/profiles/${encodeURI(this.source)}/${encodeURI(newValue)}`,
-    ).then((profileData) => {
-      this.profileData = profileData;
-    });
+  fieldsChanged(_: string, newValue?: string) {
+    if (!newValue) {
+      this.profileData = null;
+      return;
+    }
+    this._fetch();
   }
 
   connectedCallback() {
