@@ -14,6 +14,7 @@ RUN npm ci
 COPY webcomponent/ webcomponent/
 COPY app/ app/
 COPY .storybook/ .storybook/
+COPY custom-elements-manifest.config.mjs ./
 RUN npm run build && npm run build-storybook -- -o static/docs
 
 # Go build stage

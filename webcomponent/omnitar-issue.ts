@@ -290,9 +290,11 @@ export class OmnitarIssueElement extends LitElement {
   @property({ type: Boolean, reflect: true })
   visible = false;
 
+  /** @internal */
   @state()
   issueData: Issue | null = null;
 
+  /** @internal */
   private _hoverIntent: ReturnType<typeof hoverintent> | null = null;
 
   willUpdate(changed: PropertyValues<this>) {
@@ -313,16 +315,6 @@ export class OmnitarIssueElement extends LitElement {
   updated(changed: PropertyValues<this>) {
     if (changed.has("issueData")) {
       this.toggleAttribute("has-data", !!this.issueData);
-      if (this.visible) {
-        this._show();
-      }
-    }
-    if (changed.has("visible")) {
-      if (this.visible) {
-        this._show();
-      } else if (changed.get("visible") !== undefined) {
-        this._hide();
-      }
     }
   }
 
@@ -337,22 +329,14 @@ export class OmnitarIssueElement extends LitElement {
     this._hoverIntent?.remove();
   }
 
-  private _show = async () => {
-    if (!this.issueData) {
-      return;
-    }
-    if (this.shadowRoot) {
-      this.shadowRoot.querySelector(".card")?.classList.remove("hide");
-    }
+  /** @internal */
+  private _show = () => {
+    this.visible = true;
   };
 
+  /** @internal */
   private _hide = () => {
-    if (!this.issueData) {
-      return;
-    }
-    if (this.shadowRoot) {
-      this.shadowRoot.querySelector(".card")?.classList.add("hide");
-    }
+    this.visible = false;
   };
 
   render() {
@@ -365,7 +349,7 @@ export class OmnitarIssueElement extends LitElement {
         <img class="icon" src=${live(svgJira)} alt="Jira" />
         ${issue.key}
       </span>
-      <div class="card hide">
+      <div class="card ${this.visible ? "" : "hide"}">
         <div class="issue-heading">
           <img
             class="issue-type-icon"

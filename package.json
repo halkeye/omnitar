@@ -11,15 +11,17 @@
     "build:app": "vite build",
     "build:webcomponent": "vite build --mode webcomponent",
     "preview": "vite preview",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "storybook": "npm run analyze && storybook dev -p 6006",
+    "build-storybook": "npm run analyze && storybook build",
+    "test": "npm run analyze && vitest run",
+    "test:watch": "vitest",
+    "analyze": "cem analyze"
   },
   "keywords": [],
   "author": "",
   "type": "module",
   "devDependencies": {
+    "@custom-elements-manifest/analyzer": "^0.11.0",
     "@emnapi/core": "^1.9.2",
     "@eslint/js": "^10.0.1",
     "@napi-rs/wasm-runtime": "^1.2.5",
@@ -43,5 +45,6 @@
     "hoverintent": "^2.2.1",
     "lit": "^3.3.3",
     "lit-html": "^3.3.3"
-  }
+  },
+  "customElements": "custom-elements.json"
 }

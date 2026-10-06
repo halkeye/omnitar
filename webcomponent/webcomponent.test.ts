@@ -77,11 +77,13 @@ describe("omnitar-profile", () => {
     expect(name?.textContent).toContain("Ada Lovelace");
 
     el._show();
+    await el.updateComplete;
     const card = el.shadowRoot.querySelector(".card");
     expect(card.classList.contains("hide")).toBe(false);
     expect(card.textContent).toContain("ada@example.com");
 
     el._hide();
+    await el.updateComplete;
     expect(card.classList.contains("hide")).toBe(true);
   });
 

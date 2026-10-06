@@ -206,11 +206,14 @@ export class OmnitarProfileElement extends LitElement {
   @property({ type: Boolean, reflect: true })
   visible = false;
 
+  /** @internal */
   @state()
   profileData: Profile | null = null;
 
+  /** @internal */
   private _hoverIntent: ReturnType<typeof hoverintent> | null = null;
 
+  /** @internal */
   private _fetch() {
     if (!this.email) {
       return;
@@ -256,16 +259,6 @@ export class OmnitarProfileElement extends LitElement {
   updated(changed: PropertyValues<this>) {
     if (changed.has("profileData")) {
       this.toggleAttribute("has-data", !!this.profileData);
-      if (this.visible) {
-        this._show();
-      }
-    }
-    if (changed.has("visible")) {
-      if (this.visible) {
-        this._show();
-      } else if (changed.get("visible") !== undefined) {
-        this._hide();
-      }
     }
   }
 
@@ -280,22 +273,14 @@ export class OmnitarProfileElement extends LitElement {
     this._hoverIntent?.remove();
   }
 
-  private _show = async () => {
-    if (!this.profileData) {
-      return;
-    }
-    if (this.shadowRoot) {
-      this.shadowRoot.querySelector(".card")?.classList.remove("hide");
-    }
+  /** @internal */
+  private _show = () => {
+    this.visible = true;
   };
 
+  /** @internal */
   private _hide = () => {
-    if (!this.profileData) {
-      return;
-    }
-    if (this.shadowRoot) {
-      this.shadowRoot.querySelector(".card")?.classList.add("hide");
-    }
+    this.visible = false;
   };
 
   render() {
@@ -308,7 +293,7 @@ export class OmnitarProfileElement extends LitElement {
         <img class="icon" src=${live(svgSlack)} alt="Slack" />
         ${profile.name}
       </span>
-      <div class="card hide">
+      <div class="card ${this.visible ? "" : "hide"}">
         <div style="height: 100%">
           <img alt="profile photo" class="avatar" src="${profile.avatar_url}" />
         </div>

@@ -178,3 +178,4 @@ static/docs
 db.sqlite
 
 tmp/profile-http
+custom-elements.json

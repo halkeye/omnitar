@@ -1,10 +1,16 @@
-import type { Preview } from "@storybook/web-components-vite";
+import {
+  setCustomElementsManifest,
+  type Preview,
+} from "@storybook/web-components-vite";
+
+import customElements_ from "../custom-elements.json";
 import { INITIAL_VIEWPORTS } from "storybook/viewport";
 
 import registerIssue from "../webcomponent/omnitar-issue.ts";
 import registerProfile from "../webcomponent/omnitar-profile.ts";
 import { installFetchMock } from "./fetch-mock.ts";
 
+setCustomElementsManifest(customElements_);
 installFetchMock();
 
 const STORYBOOK_ORIGIN = "https://storybook.local";
