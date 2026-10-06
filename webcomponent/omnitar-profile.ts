@@ -4,23 +4,13 @@
 //   <omnitar-profile email="slack@gavinmogan.com">Gavin Mogan</omnitar-card>
 //
 
-import {
-  attr,
-  css,
-  FASTElement,
-  html,
-  observable,
-  repeat,
-  when,
-  type ValueConverter,
-} from "@microsoft/fast-element";
+import { css, html, LitElement, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
+import { map } from "lit/directives/map.js";
+import { live } from "lit/directives/live.js";
 import cachedFetch from "./util-cached-fetch.ts";
-import hoverIntent from "hoverintent";
+import hoverintent from "hoverintent";
 import svgSlack from "./assets/slack.svg";
-
-import { enableDebug } from "@microsoft/fast-element/debug.js";
-
-enableDebug();
 
 let scriptOrigin = "";
 let accountUUID = "";
@@ -29,133 +19,16 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-export const csvConverter: ValueConverter = {
-  // Converts the attribute string from the HTML to a JavaScript array
-  fromView(value: string | null): string[] {
+export const csvConverter = {
+  fromAttribute(value: string | null): string[] {
     if (!value) return [];
-    if (Array.isArray(value)) {
-      return value;
-    }
     return value.split(",").map((item) => item.trim());
   },
-
-  // Converts the JavaScript array back to a CSV string for the HTML attribute
-  toView(value: any[] | null): string | null {
+  toAttribute(value: string[] | null): string | null {
     if (!value || !Array.isArray(value)) return null;
     return value.join(",");
   },
 };
-
-class OmnitarProfileElement extends FASTElement {
-  @attr
-  source: string = "auto";
-
-  @attr
-  email?: string;
-
-  @attr({ converter: csvConverter })
-  fields: Array<string> = [];
-
-  @attr
-  visible?: Boolean | undefined;
-
-  @observable
-  profileData: Profile | null = null;
-
-  private _hoverIntent: ReturnType<typeof hoverIntent> | null = null;
-
-  profileDataChanged(_: Profile, newValue?: Profile) {
-    if (newValue) {
-      this.$fastController.addStyles(cssHasProfile);
-    } else {
-      this.$fastController.addStyles(cssNoProfile);
-    }
-  }
-
-  _fetch() {
-    if (!this.email) {
-      return;
-    }
-
-    const email = normalizeEmail(this.email);
-    let url = `${scriptOrigin}/account/${encodeURI(accountUUID)}/profiles/${encodeURI(this.source)}/${encodeURI(email)}`;
-    if (this.fields.length != 0) {
-      url += "?fields=" + encodeURI(this.fields.join("."));
-    }
-
-    cachedFetch(url).then((profileData) => {
-      if (profileData && this.fields.length > 0) {
-        ["email", "name"].forEach((field) => {
-          if (!this.fields.includes(field)) {
-            delete profileData[field];
-          }
-        });
-        Object.keys(profileData.fields ?? {}).forEach((field) => {
-          if (!this.fields.includes(field)) {
-            delete profileData.fields[field];
-          }
-        });
-      }
-      this.profileData = profileData;
-    });
-  }
-
-  emailChanged(_: string, newValue?: string) {
-    if (!newValue) {
-      this.profileData = null;
-      return;
-    }
-    this._fetch();
-  }
-
-  fieldsChanged(_: string, newValue?: string) {
-    if (!newValue) {
-      this.profileData = null;
-      return;
-    }
-    this._fetch();
-  }
-
-  visibleChanged(oldValue: Boolean, newValue?: Boolean) {
-    if (newValue) {
-      this._show();
-    } else if (oldValue !== newValue) {
-      this._hide();
-    }
-  }
-
-  connectedCallback() {
-    super.connectedCallback();
-    if (!this) {
-      return;
-    }
-    this._hoverIntent = hoverIntent(this, this._show, this._hide);
-  }
-
-  disconnectedCallback() {
-    this._hide();
-    this._hoverIntent?.remove();
-  }
-
-  _show = async () => {
-    if (!this.profileData) {
-      return;
-    }
-    if (this.shadowRoot) {
-      this.shadowRoot.querySelector(".card")?.classList.remove("hide");
-    }
-  };
-
-  _hide = () => {
-    if (!this.profileData) {
-      return;
-    }
-    if (this.shadowRoot) {
-      this.shadowRoot.querySelector(".card")?.classList.add("hide");
-    }
-  };
-}
-
 class Profile {
   id: string = "";
   team_id: string = "";
@@ -167,20 +40,21 @@ class Profile {
   } = {};
 }
 
-const cssGlobal = css`
-  .hide {
-    display: none !important;
-  }
-`;
-const cssNoProfile = css``;
-const cssHasProfile = css`
+const styles = css`
   :host {
     position: relative;
     display: inline-block;
+  }
+
+  :host([has-data]) {
     text-decoration-line: underline;
     text-decoration-style: dashed;
     text-decoration-color: #9ca3af;
     text-underline-offset: 2px;
+  }
+
+  .hide {
+    display: none !important;
   }
 
   .display-name {
@@ -316,58 +190,155 @@ const cssHasProfile = css`
   }
 `;
 
-const profileTemplateHTML = html<OmnitarProfileElement>`
-  <template>
-    ${when(
-      (x) => !x.profileData,
-      html<OmnitarProfileElement>`<slot></slot>`,
-      html<OmnitarProfileElement>`
-        <span class="display-name">
-          <img class="icon" src=${svgSlack} alt="Slack" />
-          ${(x) => x.profileData!.name}
-        </span>
-        <div class="card hide">
-          <div style="height: 100%">
-            <img
-              alt="profile photo"
-              class="avatar"
-              src="${(x) => x.profileData!.avatar_url}"
-            />
-          </div>
-          <div>
-            <div class="name">${(x) => x.profileData!.name}</div>
-            <div class="email">${(x) => x.profileData!.email}</div>
-            <dl class="fields">
-              ${repeat(
-                (x) => Object.entries(x.profileData!.fields ?? {}),
-                html`
-                  <dt>${(x) => x[0]}</dt>
-                  <dd>${(x) => x[1]}</dd>
-                `,
-              )}
-            </dl>
-            <a
-              class="message-link button-link"
-              href="${(x) =>
-                `https://app.slack.com/client/${x.profileData!.team_id}/${x.profileData!.id}`},"
-              target="_blank"
-              >Message</a
-            >
-          </div>
+@customElement("omnitar-profile")
+export class OmnitarProfileElement extends LitElement {
+  static styles = styles;
+
+  @property({ type: String })
+  source: string = "auto";
+
+  @property({ type: String })
+  email?: string;
+
+  @property({ converter: csvConverter })
+  fields: Array<string> = [];
+
+  @property({ type: Boolean, reflect: true })
+  visible = false;
+
+  @state()
+  profileData: Profile | null = null;
+
+  private _hoverIntent: ReturnType<typeof hoverintent> | null = null;
+
+  private _fetch() {
+    if (!this.email) {
+      return;
+    }
+
+    const email = normalizeEmail(this.email);
+    let url = `${scriptOrigin}/account/${encodeURI(accountUUID)}/profiles/${encodeURI(this.source)}/${encodeURI(email)}`;
+    if (this.fields.length != 0) {
+      url += "?fields=" + encodeURI(this.fields.join("."));
+    }
+
+    cachedFetch(url).then((profileData) => {
+      if (profileData && this.fields.length > 0) {
+        ["email", "name"].forEach((field) => {
+          if (!this.fields.includes(field)) {
+            delete profileData[field];
+          }
+        });
+        Object.keys(profileData.fields ?? {}).forEach((field) => {
+          if (!this.fields.includes(field)) {
+            delete profileData.fields[field];
+          }
+        });
+      }
+      this.profileData = profileData;
+    });
+  }
+
+  willUpdate(changed: PropertyValues<this>) {
+    const rawFields = this.fields as unknown;
+    if (!Array.isArray(rawFields)) {
+      this.fields = csvConverter.fromAttribute(String(rawFields ?? ""));
+    }
+    if (changed.has("email") || changed.has("fields")) {
+      if (!this.email) {
+        this.profileData = null;
+        return;
+      }
+      this._fetch();
+    }
+  }
+
+  updated(changed: PropertyValues<this>) {
+    if (changed.has("profileData")) {
+      this.toggleAttribute("has-data", !!this.profileData);
+      if (this.visible) {
+        this._show();
+      }
+    }
+    if (changed.has("visible")) {
+      if (this.visible) {
+        this._show();
+      } else if (changed.get("visible") !== undefined) {
+        this._hide();
+      }
+    }
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._hoverIntent = hoverintent(this, this._show, this._hide);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._hide();
+    this._hoverIntent?.remove();
+  }
+
+  private _show = async () => {
+    if (!this.profileData) {
+      return;
+    }
+    if (this.shadowRoot) {
+      this.shadowRoot.querySelector(".card")?.classList.remove("hide");
+    }
+  };
+
+  private _hide = () => {
+    if (!this.profileData) {
+      return;
+    }
+    if (this.shadowRoot) {
+      this.shadowRoot.querySelector(".card")?.classList.add("hide");
+    }
+  };
+
+  render() {
+    if (!this.profileData) {
+      return html`<slot></slot>`;
+    }
+    const profile = this.profileData;
+    return html`
+      <span class="display-name">
+        <img class="icon" src=${live(svgSlack)} alt="Slack" />
+        ${profile.name}
+      </span>
+      <div class="card hide">
+        <div style="height: 100%">
+          <img alt="profile photo" class="avatar" src="${profile.avatar_url}" />
         </div>
-      `,
-    )}
-  </template>
-`;
+        <div>
+          <div class="name">${profile.name}</div>
+          <div class="email">${profile.email}</div>
+          <dl class="fields">
+            ${map(
+              Object.entries(profile.fields ?? {}),
+              ([key, value]) => html`
+                <dt>${key}</dt>
+                <dd>${value}</dd>
+              `,
+            )}
+          </dl>
+          <a
+            class="message-link button-link"
+            href="https://app.slack.com/client/${profile.team_id}/${profile.id}"
+            target="_blank"
+            >Message</a
+          >
+        </div>
+      </div>
+    `;
+  }
+}
 
 export function register(o: string, a: string) {
   scriptOrigin = o;
   accountUUID = a;
-  OmnitarProfileElement.define({
-    name: "omnitar-profile",
-    template: profileTemplateHTML,
-    styles: [cssGlobal, cssNoProfile],
-  });
 }
 
 export default register;

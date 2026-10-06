@@ -4,22 +4,13 @@
 //   <omnitar-issue issue="HR-1">HR-1</omnitar-issue>
 //
 
-import {
-  attr,
-  css,
-  FASTElement,
-  html,
-  observable,
-  repeat,
-  when,
-} from "@microsoft/fast-element";
+import { css, html, LitElement, type PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
+import { map } from "lit/directives/map.js";
+import { live } from "lit/directives/live.js";
 import cachedFetch from "./util-cached-fetch.ts";
-import hoverIntent from "hoverintent";
-
-import { enableDebug } from "@microsoft/fast-element/debug.js";
+import hoverintent from "hoverintent";
 import svgJira from "./assets/jira.svg";
-
-enableDebug();
 
 let scriptOrigin = "";
 let accountUUID = "";
@@ -32,11 +23,18 @@ function channelLuminance(value: number) {
 function relativeLuminance(color: string): number | null {
   const hex = color.trim().replace(/^#/, "");
   const expanded =
-    hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+    hex.length === 3
+      ? hex
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : hex;
   if (!/^[0-9a-f]{6}$/i.test(expanded)) {
     return null;
   }
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(expanded.slice(i, i + 2), 16));
+  const [r, g, b] = [0, 2, 4].map((i) =>
+    parseInt(expanded.slice(i, i + 2), 16),
+  );
   return (
     0.2126 * channelLuminance(r) +
     0.7152 * channelLuminance(g) +
@@ -73,96 +71,21 @@ class Issue {
   } = {};
 }
 
-class OmnitarIssueElement extends FASTElement {
-  @attr
-  source: string = "auto";
-
-  @attr
-  issue?: string;
-
-  @attr
-  visible?: Boolean | undefined;
-
-  @observable
-  issueData: Issue | null = null;
-
-  private _hoverIntent: ReturnType<typeof hoverIntent> | null = null;
-
-  issueDataChanged(_: Issue, newValue?: Issue) {
-    if (newValue) {
-      this.$fastController.addStyles(cssHasProfile);
-    } else {
-      this.$fastController.addStyles(cssNoProfile);
-    }
-  }
-
-  issueChanged(_: string, newValue?: string) {
-    if (!newValue) {
-      this.issueData = null;
-      return;
-    }
-
-    cachedFetch(
-      `${scriptOrigin}/account/${encodeURI(accountUUID)}/issues/${encodeURI(this.source)}/${encodeURI(newValue)}`,
-    ).then((issueData) => {
-      this.issueData = issueData;
-    });
-  }
-
-  visibleChanged(oldValue: Boolean, newValue?: Boolean) {
-    if (newValue) {
-      this._show();
-    } else if (oldValue !== newValue) {
-      this._hide();
-    }
-  }
-
-  connectedCallback() {
-    super.connectedCallback();
-    if (!this) {
-      return;
-    }
-    this._hoverIntent = hoverIntent(this, this._show, this._hide);
-  }
-
-  disconnectedCallback() {
-    this._hide();
-    this._hoverIntent?.remove();
-  }
-
-  _show = async () => {
-    if (!this.issueData) {
-      return;
-    }
-    if (this.shadowRoot) {
-      this.shadowRoot.querySelector(".card")?.classList.remove("hide");
-    }
-  };
-
-  _hide = () => {
-    if (!this.issueData) {
-      return;
-    }
-    if (this.shadowRoot) {
-      this.shadowRoot.querySelector(".card")?.classList.add("hide");
-    }
-  };
-}
-
-const cssGlobal = css`
-  .hide {
-    display: none !important;
-  }
-`;
-const cssNoProfile = css``;
-const cssHasProfile = css`
+const styles = css`
   :host {
     position: relative;
     display: inline-block;
+  }
+
+  :host([has-data]) {
     text-decoration-line: underline;
     text-decoration-style: dashed;
     text-decoration-color: #9ca3af;
     text-underline-offset: 2px;
+  }
+
+  .hide {
+    display: none !important;
   }
 
   .display-name {
@@ -354,88 +277,162 @@ const cssHasProfile = css`
   }
 `;
 
-const issueTemplateHTML = html<OmnitarIssueElement>`
-  <template>
-    ${when(
-      (x) => !x.issueData,
-      html<OmnitarIssueElement>`<slot></slot>`,
-      html<OmnitarIssueElement>`
-        <span class="display-name">
-          <img class="icon" src=${svgJira} alt="Jira" />
-          ${(x) => x.issueData!.key}
-        </span>
-        <div class="card hide">
-          <div class="issue-heading">
-            <img
-              class="issue-type-icon"
-              @error=${(x) => {
-                x.issueData! = { ...x.issueData!, issue_type_icon: svgJira };
-              }}
-              src="${(x) => x.issueData!.issue_type_icon}"
-              alt="${(x) => x.issueData!.issue_type}"
-            />
-            <div class="issue-summary">
-              <span class="issue-key">${(x) => x.issueData!.key}</span>
-              <span class="issue-title">${(x) => x.issueData!.title}</span>
-            </div>
+@customElement("omnitar-issue")
+export class OmnitarIssueElement extends LitElement {
+  static styles = styles;
+
+  @property({ type: String })
+  source: string = "auto";
+
+  @property({ type: String })
+  issue?: string;
+
+  @property({ type: Boolean, reflect: true })
+  visible = false;
+
+  @state()
+  issueData: Issue | null = null;
+
+  private _hoverIntent: ReturnType<typeof hoverintent> | null = null;
+
+  willUpdate(changed: PropertyValues<this>) {
+    if (changed.has("issue")) {
+      const issue = this.issue;
+      if (!issue) {
+        this.issueData = null;
+        return;
+      }
+      cachedFetch(
+        `${scriptOrigin}/account/${encodeURI(accountUUID)}/issues/${encodeURI(this.source)}/${encodeURI(issue)}`,
+      ).then((issueData) => {
+        this.issueData = issueData;
+      });
+    }
+  }
+
+  updated(changed: PropertyValues<this>) {
+    if (changed.has("issueData")) {
+      this.toggleAttribute("has-data", !!this.issueData);
+      if (this.visible) {
+        this._show();
+      }
+    }
+    if (changed.has("visible")) {
+      if (this.visible) {
+        this._show();
+      } else if (changed.get("visible") !== undefined) {
+        this._hide();
+      }
+    }
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._hoverIntent = hoverintent(this, this._show, this._hide);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._hide();
+    this._hoverIntent?.remove();
+  }
+
+  private _show = async () => {
+    if (!this.issueData) {
+      return;
+    }
+    if (this.shadowRoot) {
+      this.shadowRoot.querySelector(".card")?.classList.remove("hide");
+    }
+  };
+
+  private _hide = () => {
+    if (!this.issueData) {
+      return;
+    }
+    if (this.shadowRoot) {
+      this.shadowRoot.querySelector(".card")?.classList.add("hide");
+    }
+  };
+
+  render() {
+    if (!this.issueData) {
+      return html`<slot></slot>`;
+    }
+    const issue = this.issueData;
+    return html`
+      <span class="display-name">
+        <img class="icon" src=${live(svgJira)} alt="Jira" />
+        ${issue.key}
+      </span>
+      <div class="card hide">
+        <div class="issue-heading">
+          <img
+            class="issue-type-icon"
+            @error=${() => {
+              this.issueData = { ...this.issueData!, issue_type_icon: svgJira };
+            }}
+            src="${issue.issue_type_icon}"
+            alt="${issue.issue_type}"
+          />
+          <div class="issue-summary">
+            <span class="issue-key">${issue.key}</span>
+            <span class="issue-title">${issue.title}</span>
           </div>
-          <div class="issue-meta">
-            <span class="meta-item">
-              <img
-                class="meta-icon"
-                src="${(x) => x.issueData!.reporter_icon}"
-                alt="Reporter: ${(x) => x.issueData!.reporter}"
-              />
-              ${(x) => x.issueData!.reporter}
-            </span>
-            <span
-              class="status-pill"
-              style="background-color: ${(x) => x.issueData!.status_color}; color: ${(x) => statusTextColor(x.issueData!.status_color)}"
-            >
-              ${(x) => x.issueData!.status}
-            </span>
-            <span class="meta-item">
-              <img
-                class="meta-icon"
-                @error=${(x) => {
-                  x.issueData! = { ...x.issueData!, priority_icon: svgJira };
-                }}
-                src="${(x) => x.issueData!.priority_icon}"
-                alt="Priority: ${(x) => x.issueData!.priority}"
-              />
-              ${(x) => x.issueData!.priority}
-            </span>
-          </div>
-          <dl class="fields">
-            ${repeat(
-              (x) => Object.entries(x.issueData!.fields),
-              html`
-                <dt>${(x) => x[0]}</dt>
-                <dd>${(x) => x[1]}</dd>
-              `,
-            )}
-          </dl>
-          <a
-            class="message-link button-link"
-            href="${(x) => x.issueData!.url}"
-            target="_blank"
-            rel="noopener noreferrer"
-            >View issue</a
-          >
         </div>
-      `,
-    )}
-  </template>
-`;
+        <div class="issue-meta">
+          <span class="meta-item">
+            <img
+              class="meta-icon"
+              src="${issue.reporter_icon}"
+              alt="Reporter: ${issue.reporter}"
+            />
+            ${issue.reporter}
+          </span>
+          <span
+            class="status-pill"
+            style="background-color: ${issue.status_color}; color: ${statusTextColor(
+              issue.status_color,
+            )}"
+          >
+            ${issue.status}
+          </span>
+          <span class="meta-item">
+            <img
+              class="meta-icon"
+              @error=${() => {
+                this.issueData = { ...this.issueData!, priority_icon: svgJira };
+              }}
+              src="${issue.priority_icon}"
+              alt="Priority: ${issue.priority}"
+            />
+            ${issue.priority}
+          </span>
+        </div>
+        <dl class="fields">
+          ${map(
+            Object.entries(issue.fields),
+            ([key, value]) => html`
+              <dt>${key}</dt>
+              <dd>${value}</dd>
+            `,
+          )}
+        </dl>
+        <a
+          class="message-link button-link"
+          href="${issue.url}"
+          target="_blank"
+          rel="noopener noreferrer"
+          >View issue</a
+        >
+      </div>
+    `;
+  }
+}
 
 export function register(o: string, a: string) {
   scriptOrigin = o;
   accountUUID = a;
-  OmnitarIssueElement.define({
-    name: "omnitar-issue",
-    template: issueTemplateHTML,
-    styles: [cssGlobal, cssNoProfile],
-  });
 }
 
 export default register;

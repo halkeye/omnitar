@@ -29,16 +29,16 @@ afterEach(() => {
 
 describe("csvConverter", () => {
   it("parses a comma-separated attribute into an array", () => {
-    expect(csvConverter.fromView("a, b ,c")).toEqual(["a", "b", "c"]);
+    expect(csvConverter.fromAttribute("a, b ,c")).toEqual(["a", "b", "c"]);
   });
 
   it("returns an empty array for empty input", () => {
-    expect(csvConverter.fromView("")).toEqual([]);
+    expect(csvConverter.fromAttribute("")).toEqual([]);
   });
 
   it("serializes an array back to csv", () => {
-    expect(csvConverter.toView(["a", "b"])).toBe("a,b");
-    expect(csvConverter.toView(null)).toBe(null);
+    expect(csvConverter.toAttribute(["a", "b"])).toBe("a,b");
+    expect(csvConverter.toAttribute(null)).toBe(null);
   });
 });
 

@@ -1,15 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/web-components-vite";
-import { expect, waitFor } from "storybook/test";
-
-const revealCard = async (canvasElement: HTMLElement) => {
-  const selector = "omnitar-issue";
-  await waitFor(() => {
-    const el = canvasElement.querySelector(selector) as any;
-    expect(el?.shadowRoot?.querySelector(".card")).toBeTruthy();
-  });
-  const el = canvasElement.querySelector(selector) as any;
-  el._show();
-};
+import { html } from "lit";
+import { spyOn } from "storybook/test";
 
 type IssueArgs = {
   issue?: string;
@@ -28,35 +19,29 @@ const meta = {
     issue: "HR-1",
     source: "jira",
   },
+  render: (args) => html`
+    <omnitar-issue visible issue=${args.issue ?? ""} source=${args.source ?? ""}
+      >${args.issue ?? "HR-999"}</omnitar-issue
+    >
+  `,
+  async beforeEach() {
+    spyOn(console, "log").mockName("console.log");
+  },
 } satisfies Meta<IssueArgs>;
 
 export default meta;
 type Story = StoryObj<IssueArgs>;
 
-export const Card: Story = {
-  play: async ({ canvasElement }) => {
-    await revealCard(canvasElement);
-  },
-};
+export const Card: Story = {};
 
 export const SecondIssue: Story = {
   args: {
     issue: "HR-2",
-  },
-  play: async ({ canvasElement }) => {
-    await revealCard(canvasElement);
   },
 };
 
 export const NotFound: Story = {
   args: {
     issue: "HR-999",
-  },
-  render: (args) => {
-    const el = document.createElement("omnitar-issue");
-    el.setAttribute("issue", String(args.issue ?? ""));
-    el.setAttribute("source", String(args.source ?? ""));
-    el.textContent = "HR-999";
-    return el;
   },
 };
