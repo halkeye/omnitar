@@ -174,4 +174,5 @@ tmp/main
 static/webcomponent.*
 static/index.*
 static/assets
+static/docs
 db.sqlite

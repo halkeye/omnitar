@@ -11,7 +11,8 @@ RUN npm ci
 
 COPY webcomponent/ webcomponent/
 COPY app/ app/
-RUN npm run build
+COPY .storybook/ .storybook/
+RUN npm run build && npm run build-storybook -- -o static/docs
 
 # Go build stage
 FROM golang:1.27.0-alpine AS builder
