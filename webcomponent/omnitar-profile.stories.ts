@@ -15,6 +15,7 @@ type ProfileArgs = {
   email?: string;
   source?: string;
   fields?: string;
+  visible?: boolean;
 };
 
 const meta = {
@@ -25,6 +26,7 @@ const meta = {
     email: { control: "text" },
     source: { control: "text" },
     fields: { control: "text" },
+    visible: { control: "boolean" },
   },
   args: {
     email: "ada@example.com",
@@ -60,6 +62,9 @@ export const NotFound: Story = {
     const el = document.createElement("omnitar-profile");
     el.setAttribute("email", String(args.email ?? ""));
     el.setAttribute("source", String(args.source ?? ""));
+    if (args.visible) {
+      el.setAttribute("visible", "visible");
+    }
     el.textContent = "unknown@example.com";
     return el;
   },

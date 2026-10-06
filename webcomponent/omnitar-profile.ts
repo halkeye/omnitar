@@ -49,10 +49,16 @@ export const csvConverter: ValueConverter = {
 class OmnitarProfileElement extends FASTElement {
   @attr
   source: string = "auto";
+
   @attr
   email?: string;
+
   @attr({ converter: csvConverter })
   fields: Array<string> = [];
+
+  @attr
+  visible?: Boolean | undefined;
+
   @observable
   profileData: Profile | null = null;
 
@@ -108,6 +114,14 @@ class OmnitarProfileElement extends FASTElement {
       return;
     }
     this._fetch();
+  }
+
+  visibleChanged(oldValue: Boolean, newValue?: Boolean) {
+    if (newValue) {
+      this._show();
+    } else if (oldValue !== newValue) {
+      this._hide();
+    }
   }
 
   connectedCallback() {
@@ -276,7 +290,7 @@ const cssHasProfile = css`
 
   .card dl.fields dt {
     font-weight: 500;
-    color: #888;
+    color: #1b1b1b;
   }
 
   .card dl.fields dd {

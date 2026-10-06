@@ -24,6 +24,36 @@ enableDebug();
 let scriptOrigin = "";
 let accountUUID = "";
 
+function channelLuminance(value: number) {
+  const c = value / 255;
+  return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+function relativeLuminance(color: string): number | null {
+  const hex = color.trim().replace(/^#/, "");
+  const expanded =
+    hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+  if (!/^[0-9a-f]{6}$/i.test(expanded)) {
+    return null;
+  }
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(expanded.slice(i, i + 2), 16));
+  return (
+    0.2126 * channelLuminance(r) +
+    0.7152 * channelLuminance(g) +
+    0.0722 * channelLuminance(b)
+  );
+}
+
+export function statusTextColor(backgroundColor: string): string {
+  const luminance = relativeLuminance(backgroundColor);
+  if (luminance === null) {
+    return "#1f2937";
+  }
+  const contrastBlack = (luminance + 0.05) / 0.05;
+  const contrastWhite = 1.05 / (luminance + 0.05);
+  return contrastWhite >= contrastBlack ? "#ffffff" : "#111111";
+}
+
 class Issue {
   url: string = "";
   title: string = "";
@@ -50,6 +80,9 @@ class OmnitarIssueElement extends FASTElement {
   @attr
   issue?: string;
 
+  @attr
+  visible?: Boolean | undefined;
+
   @observable
   issueData: Issue | null = null;
 
@@ -74,6 +107,14 @@ class OmnitarIssueElement extends FASTElement {
     ).then((issueData) => {
       this.issueData = issueData;
     });
+  }
+
+  visibleChanged(oldValue: Boolean, newValue?: Boolean) {
+    if (newValue) {
+      this._show();
+    } else if (oldValue !== newValue) {
+      this._hide();
+    }
   }
 
   connectedCallback() {
@@ -258,7 +299,6 @@ const cssHasProfile = css`
     box-sizing: border-box;
     padding: 2px 8px;
     border-radius: 999px;
-    color: #1f2937;
     font-size: 11px;
     font-weight: 600;
     line-height: 1.2;
@@ -350,7 +390,7 @@ const issueTemplateHTML = html<OmnitarIssueElement>`
             </span>
             <span
               class="status-pill"
-              style="background-color: ${(x) => x.issueData!.status_color}"
+              style="background-color: ${(x) => x.issueData!.status_color}; color: ${(x) => statusTextColor(x.issueData!.status_color)}"
             >
               ${(x) => x.issueData!.status}
             </span>
