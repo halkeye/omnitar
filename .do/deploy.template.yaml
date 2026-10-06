@@ -23,6 +23,19 @@ spec:
       - key: DATABASE_URL
         scope: RUN_TIME
         value: ${db.DATABASE_URL}
+      - key: SESSION_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: SLACK_CLIENT_ID
+        scope: RUN_TIME
+      - key: SLACK_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: ATLASSIAN_CLIENT_ID
+        scope: RUN_TIME
+      - key: ATLASSIAN_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
       http_port: 8080
       health_check:
         http_path: /

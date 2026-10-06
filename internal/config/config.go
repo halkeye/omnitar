@@ -65,6 +65,17 @@ func (c *config) SetupDB(ctx context.Context) error {
 	return nil
 }
 
+// defaultSessionKey is the public fallback used when SESSION_KEY is unset.
+const defaultSessionKey = "omnitar-session-key"
+
+// validate rejects configurations that are unsafe outside development.
+func (c *config) validate() error {
+	if !c.IsDev() && c.SessionKey_ == defaultSessionKey {
+		return errors.New("SESSION_KEY must be set to a private value when APP_ENV is not development")
+	}
+	return nil
+}
+
 func New() *config {
 	cfg := &config{}
 
@@ -146,6 +157,10 @@ func Load() (*config, error) {
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
 	if level, err := logrus.ParseLevel(cfg.LogLevel); err != nil {

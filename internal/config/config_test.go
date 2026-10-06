@@ -55,3 +55,23 @@ func TestMysqlDSNParseTimeOverride(t *testing.T) {
 		t.Error("ParseTime = true, want false")
 	}
 }
+
+func TestValidateSessionKey(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config
+		wantErr bool
+	}{
+		{"development allows the default key", config{AppEnv: "development", SessionKey_: defaultSessionKey}, false},
+		{"production rejects the default key", config{AppEnv: "production", SessionKey_: defaultSessionKey}, true},
+		{"production accepts a custom key", config{AppEnv: "production", SessionKey_: "s3cret-value"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
