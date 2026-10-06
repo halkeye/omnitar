@@ -277,6 +277,9 @@ const styles = css`
   }
 `;
 
+/**
+ * Hover card for an issue, looked up by key.
+ */
 @customElement("omnitar-issue")
 export class OmnitarIssueElement extends LitElement {
   static styles = styles;

@@ -4,7 +4,7 @@
 //   <omnitar-profile email="slack@gavinmogan.com">Gavin Mogan</omnitar-card>
 //
 
-import { css, html, LitElement, type PropertyValues } from "lit";
+import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { map } from "lit/directives/map.js";
 import { live } from "lit/directives/live.js";
@@ -190,6 +190,9 @@ const styles = css`
   }
 `;
 
+/**
+ * Hover card for a Slack user, looked up by email.
+ */
 @customElement("omnitar-profile")
 export class OmnitarProfileElement extends LitElement {
   static styles = styles;
@@ -295,15 +298,19 @@ export class OmnitarProfileElement extends LitElement {
     return html`
       <span class="display-name">
         <img class="icon" src=${live(svgSlack)} alt="Slack" />
-        ${profile.name}
+        ${profile.name ? profile.name : html`<slot></slot>`}
       </span>
       <div class="card ${this.visible ? "" : "hide"}">
         <div style="height: 100%">
           <img alt="profile photo" class="avatar" src="${profile.avatar_url}" />
         </div>
         <div>
-          <div class="name">${profile.name}</div>
-          <div class="email">${profile.email}</div>
+          ${profile.name
+            ? html`<div class="name">${profile.name}</div>`
+            : nothing}
+          ${profile.email
+            ? html`<div class="email">${profile.email}</div>`
+            : nothing}
           <dl class="fields">
             ${map(
               Object.entries(profile.fields ?? {}),

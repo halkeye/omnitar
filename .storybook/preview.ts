@@ -24,6 +24,7 @@ if (!customElements.get("omnitar-issue")) {
 }
 
 const preview: Preview = {
+  tags: ["autodocs"],
   parameters: {
     viewport: {
       options: INITIAL_VIEWPORTS,
