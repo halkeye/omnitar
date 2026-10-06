@@ -176,3 +176,5 @@ static/index.*
 static/assets
 static/docs
 db.sqlite
+
+tmp/profile-http
