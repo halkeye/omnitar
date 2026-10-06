@@ -194,15 +194,19 @@ const styles = css`
 export class OmnitarProfileElement extends LitElement {
   static styles = styles;
 
+  /** Not yet working, but will be used to support multiple issue sources in the future. */
   @property({ type: String })
   source: string = "auto";
 
+  /** Email of the profile you want to look up */
   @property({ type: String })
   email?: string;
 
+  /** Limit to certain profile fields. If empty, all fields will be returned. */
   @property({ converter: csvConverter })
   fields: Array<string> = [];
 
+  /** Force visibility of the profile card. If false, the card will only be visible on hover. */
   @property({ type: Boolean, reflect: true })
   visible = false;
 

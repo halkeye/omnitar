@@ -4,7 +4,6 @@ import { spyOn } from "storybook/test";
 
 type IssueArgs = {
   issue?: string;
-  source?: string;
   visible?: boolean;
 };
 
@@ -14,16 +13,14 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     issue: { control: "text" },
-    source: { control: "text" },
     visible: { control: "boolean" },
   },
   args: {
     visible: true,
     issue: "HR-1",
-    source: "jira",
   },
   render: (args) => html`
-    <omnitar-issue ?visible=${args.visible} issue=${args.issue ?? ""} source=${args.source ?? ""}
+    <omnitar-issue ?visible=${args.visible} issue=${args.issue ?? ""}
       >${args.issue ?? "HR-999"}</omnitar-issue
     >
   `,

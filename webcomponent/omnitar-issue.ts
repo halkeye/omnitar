@@ -281,12 +281,15 @@ const styles = css`
 export class OmnitarIssueElement extends LitElement {
   static styles = styles;
 
+  /** Not yet working, but will be used to support multiple issue sources in the future. */
   @property({ type: String })
   source: string = "auto";
 
+  /** Issue key to display in the card. If not provided, the card will not be displayed. */
   @property({ type: String })
   issue?: string;
 
+  /** Force visibility of the profile card. If false, the card will only be visible on hover. */
   @property({ type: Boolean, reflect: true })
   visible = false;
 

@@ -3,7 +3,6 @@ import { html } from "lit";
 
 type ProfileArgs = {
   email?: string;
-  source?: string;
   fields?: string[];
   visible?: boolean;
 };
@@ -14,21 +13,18 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     email: { control: "text" },
-    source: { control: "text" },
     fields: { control: "object" },
     visible: { control: "boolean" },
   },
   args: {
     visible: true,
     email: "ada@example.com",
-    source: "slack",
     fields: [],
   },
   render: (args) => html`
     <omnitar-profile
       ?visible=${args.visible}
       email=${args.email ?? ""}
-      source=${args.source ?? ""}
       .fields=${args.fields ?? []}
       >unknown@example.com</omnitar-profile
     >
