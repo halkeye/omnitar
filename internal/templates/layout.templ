@@ -6,8 +6,8 @@ templ BaseLayout() {
 		<head>
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-			<meta name="description" content="A web component to show a slack profile card on hover"/>
-			<title>omnitar</title>
+			<meta name="description" content="Embeddable omnitar-profile and omnitar-issue web components backed by Slack and Atlassian."/>
+			<title>Omnitar</title>
 			if IsDev(ctx) {
 				<script type="module" src="/app/app.js"></script>
 			} else {
@@ -18,12 +18,13 @@ templ BaseLayout() {
 		<body>
 			<wa-page>
 				<div slot="header">
-					<h1 title="Omni(-Ava)tar">&lt;omnitar-profile&gt; / &lt;omnitar-issue&gt;</h1>
+					<h1><a href="/" class="site-title">Omnitar</a></h1>
 				</div>
 				<div slot="navigation">
+					<wa-button href="/docs/" variant="neutral"><wa-icon name="book"></wa-icon> Docs</wa-button>
 					<wa-button href="/auth/slack" variant="primary"><wa-icon name="plus"></wa-icon><wa-icon name="slack" family="brands"></wa-icon> Slack</wa-button>
 					<wa-button href="/auth/atlassian" variant="primary"><wa-icon name="plus"></wa-icon><wa-icon name="atlassian" family="brands"></wa-icon> Atlassian</wa-button>
-					<wa-button href="https://github.com/halkeye/omnitar" variant="primary"><wa-icon name="github" family="brands"></wa-icon> Source</wa-button>
+					<wa-button href="https://github.com/halkeye/omnitar" variant="neutral"><wa-icon name="github" family="brands"></wa-icon> Source</wa-button>
 				</div>
 				if len(Flashes(ctx)) > 0 {
 					<span slot="banner">

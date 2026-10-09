@@ -41,60 +41,33 @@ func Index() templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<script type=\"module\" src=\"/account/demo/webcomponent.js\"></script> <h2 id=\"quick-start\" class=\"anchor-heading\">Quick Start</h2><p>Login with slack or atlassian via the buttons on the side of the page</p><p>It will then give you a script tag to add to your html</p><p>Such as</p><!-- prettier-ignore --> <p><copy-paste>&lt;script type=&quot;module&quot; src=&quot;")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"landing\"><section class=\"landing__hero\"><p class=\"landing__eyebrow\">Slack &amp; Atlassian, in your UI</p><h2 class=\"landing__title\">Rich profile and issue links for any web app</h2><p class=\"landing__lead\">Omnitar connects to your workspace, then serves a small script you drop into HTML, React, Rails, or anything else that runs in a browser. Two custom elements handle hover cards for people and Jira issues.</p><div class=\"landing__cta\"><wa-button href=\"/auth/slack\" variant=\"brand\" size=\"large\"><wa-icon slot=\"prefix\" name=\"slack\" family=\"brands\"></wa-icon> Get started with Slack</wa-button> <wa-button href=\"/auth/atlassian\" variant=\"brand\" size=\"large\"><wa-icon slot=\"prefix\" name=\"atlassian\" family=\"brands\"></wa-icon> Get started with Atlassian</wa-button></div><p class=\"landing__cta-hint\">Sign in to connect a workspace. Your account page includes the script tag with your account ID—paste it once, then use the elements anywhere on your site.</p></section><section class=\"landing__components\"><h3 class=\"landing__section-title\">Web components</h3><p class=\"landing__section-lead\">After you add <code>&lt;script type=&quot;module&quot; src=&quot;…/webcomponent.js&quot;&gt;&lt;/script&gt;</code> , these tags work like native HTML.</p><div class=\"landing__grid\"><wa-card class=\"landing__card\"><div slot=\"header\"><h4><code>&lt;omnitar-profile&gt;</code></h4></div><p>Turn an email or display name into a link with an optional hover card: avatar, full name, and custom profile fields from Slack.</p><wa-button slot=\"footer\" href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(BaseURL(ctx))
+			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue("/docs/?path=/docs/web-components-omnitar-profile--docs")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `index.templ`, Line: 11, Col: 76}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `index.templ`, Line: 41, Col: 94}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "/account/REPLACEME/webcomponent.js&quot;&gt;&lt;/script&gt;</copy-paste></p><!-- /prettier-ignore --> <p>Replace <mark>REPLACEME</mark> with your account id (provided after login)</p><p>then you can add <mark>&lt;omnitar-profile&gt;</mark> and <mark>&lt;omnitar-issue&gt;</mark> elements to your page</p><p>For example</p><!-- prettier-ignore --> <p><copy-paste>&lt;omnitar-profile email=&quot;slack@gavinmogan.com&quot;&gt;halkeye&lt;/omnitar-profile&gt;</copy-paste></p><!-- /prettier-ignore --> <h2>Examples</h2><wa-tab-group><wa-tab panel=\"profile-active\">Profile Existing</wa-tab> <wa-tab panel=\"profile-inactive\">Profile Non-existing</wa-tab> <wa-tab panel=\"profile-limitedFields\">Profile Limited FIelds</wa-tab> <wa-tab panel=\"issue-active\">Issue Existing</wa-tab> <wa-tab panel=\"issue-inactive\">Issue Non-existing</wa-tab> <wa-tab-panel name=\"profile-active\" active><p>Is successfully able to find a profile for the given email</p><p><b>Example:</b> &nbsp;")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templ.Raw(copyPaste("<omnitar-profile email=\"slack@gavinmogan.com\">halkeye</omnitar-profile>")).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" variant=\"primary\">View docs &amp; examples <wa-icon slot=\"suffix\" name=\"arrow-up-right-from-square\"></wa-icon></wa-button></wa-card> <wa-card class=\"landing__card\"><div slot=\"header\"><h4><code>&lt;omnitar-issue&gt;</code></h4></div><p>Render Jira issue keys with status, type, and assignee on hover—ideal for changelogs, runbooks, and internal tools.</p><wa-button slot=\"footer\" href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</p><p>Assuming that user is on your slack, you should get a nice element with full name and a nice little profile card on hover</p></wa-tab-panel> <wa-tab-panel name=\"profile-inactive\"><p>If no matching profile can be found (bad data, expired, etc)</p><p><b>Example:</b> &nbsp;")
+			var templ_7745c5c3_Var4 string
+			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue("/docs/?path=/docs/web-components-omnitar-issue--docs")
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `index.templ`, Line: 53, Col: 92}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templ.Raw(copyPaste("<omnitar-profile email=\"fake@fake.com\">Any fallback string goes here</omnitar-profile>")).Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</p><p>Will show the original tag value, but without any popups</p></wa-tab-panel> <wa-tab-panel name=\"profile-limitedFields\"><p><b>Example:</b> &nbsp;")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templ.Raw(copyPaste("<omnitar-profile email=\"slack@gavinmogan.com\" fields=\"name,Country\">halkeye</omnitar-profile>")).Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</p></wa-tab-panel> <wa-tab-panel name=\"issue-active\"><p>Is successfully able to find an issue for the given issue key</p><p><b>Example:</b> &nbsp;")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templ.Raw(copyPaste("<omnitar-issue issue=\"TEST-200\">TEST-200</omnitar-issue>")).Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</p></wa-tab-panel> <wa-tab-panel name=\"issue-inactive\"><p>If no matching issue can be found (bad data, expired, etc)</p><p><b>Example:</b> &nbsp;")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templ.Raw(copyPaste("<omnitar-issue issue=\"TEST-404\">Any fallback string goes here</omnitar-issue>")).Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</p><p>Will show the original tag value, but without any popups</p></wa-tab-panel></wa-tab-group>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" variant=\"primary\">View docs &amp; examples <wa-icon slot=\"suffix\" name=\"arrow-up-right-from-square\"></wa-icon></wa-button></wa-card></div></section><section class=\"landing__steps\"><h3 class=\"landing__section-title\">How it works</h3><ol class=\"landing__step-list\"><li><strong>Connect</strong> <span>— Authenticate with Slack, Atlassian, or both so Omnitar can read directory and issue data on your behalf.</span></li><li><strong>Embed</strong> <span>— Copy the module script from your account page; it is scoped to your account UUID.</span></li><li><strong>Compose</strong> <span>— Use the custom elements in your markup; full API and live examples are in the <a href=\"/docs\">component docs</a>.</span></li></ol></section></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

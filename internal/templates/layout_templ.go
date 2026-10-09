@@ -29,7 +29,7 @@ func BaseLayout() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><meta name=\"description\" content=\"A web component to show a slack profile card on hover\"><title>omnitar</title>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><meta name=\"description\" content=\"Embeddable omnitar-profile and omnitar-issue web components backed by Slack and Atlassian.\"><title>Omnitar</title>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -44,7 +44,7 @@ func BaseLayout() templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</head><body><wa-page><div slot=\"header\"><h1 title=\"Omni(-Ava)tar\">&lt;omnitar-profile&gt; / &lt;omnitar-issue&gt;</h1></div><div slot=\"navigation\"><wa-button href=\"/auth/slack\" variant=\"primary\"><wa-icon name=\"plus\"></wa-icon><wa-icon name=\"slack\" family=\"brands\"></wa-icon> Slack</wa-button> <wa-button href=\"/auth/atlassian\" variant=\"primary\"><wa-icon name=\"plus\"></wa-icon><wa-icon name=\"atlassian\" family=\"brands\"></wa-icon> Atlassian</wa-button> <wa-button href=\"https://github.com/halkeye/omnitar\" variant=\"primary\"><wa-icon name=\"github\" family=\"brands\"></wa-icon> Source</wa-button></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</head><body><wa-page><div slot=\"header\"><h1><a href=\"/\" class=\"site-title\">Omnitar</a></h1></div><div slot=\"navigation\"><wa-button href=\"/docs/\" variant=\"neutral\"><wa-icon name=\"book\"></wa-icon> Docs</wa-button> <wa-button href=\"/auth/slack\" variant=\"primary\"><wa-icon name=\"plus\"></wa-icon><wa-icon name=\"slack\" family=\"brands\"></wa-icon> Slack</wa-button> <wa-button href=\"/auth/atlassian\" variant=\"primary\"><wa-icon name=\"plus\"></wa-icon><wa-icon name=\"atlassian\" family=\"brands\"></wa-icon> Atlassian</wa-button> <wa-button href=\"https://github.com/halkeye/omnitar\" variant=\"neutral\"><wa-icon name=\"github\" family=\"brands\"></wa-icon> Source</wa-button></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -61,7 +61,7 @@ func BaseLayout() templ.Component {
 				var templ_7745c5c3_Var2 string
 				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(flash)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 33, Col: 23}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 34, Col: 23}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 				if templ_7745c5c3_Err != nil {
@@ -89,7 +89,7 @@ func BaseLayout() templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(flash)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 41, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `layout.templ`, Line: 42, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
