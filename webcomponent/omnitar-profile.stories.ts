@@ -121,3 +121,55 @@ export const MultipleIssue: StoryObj<{
     email3: ${meta.render({ ...args, email: args.email3, visible: false })}<br />
   `,
 };
+
+/** Bug was reported where tag was embedded inside of rows with pills, and the opacity of the tag was being set to 0.5. This is a regression test to ensure that the tag is not affected by outside styles. */
+export const OpacityOutsideTag: Story = {
+  render: (args) => html`
+    <style>
+      .row {
+        padding: 6px 12px;
+        font: 14px sans-serif;
+      }
+      /* Host-page style on an ancestor of the component. */
+      .muted {
+        font-size: 10px;
+        opacity: 0.9;
+      }
+    </style>
+
+    <!-- Control: no ancestor opacity. Hover the name: the card is fully opaque. -->
+    <div class="row">
+      <span
+        ><omnitar-profile email="${args.email}"
+          >${args.email?.split("@")[0]}</omnitar-profile
+        ></span
+      >
+    </div>
+
+    <!-- Bug: ancestor has opacity 0.9. Hover the name: the card is ~90% opaque. -->
+    <div class="row">
+      <span class="muted"
+        ><omnitar-profile visible email="${args.email}"
+          >${args.email?.split("@")[0]}</omnitar-profile
+        ></span
+      >
+    </div>
+
+    <!-- Rows below the trigger, with the same name, so the bleed-through is visible behind the card. -->
+    <div class="row">
+      <omnitar-profile email="${args.email}"
+        >${args.email?.split("@")[0]}</omnitar-profile
+      >
+    </div>
+    <div class="row">
+      <omnitar-profile email="${args.email}"
+        >${args.email?.split("@")[0]}</omnitar-profile
+      >
+    </div>
+    <div class="row">
+      <omnitar-profile email="${args.email}"
+        >${args.email?.split("@")[0]}</omnitar-profile
+      >
+    </div>
+  `,
+};

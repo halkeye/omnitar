@@ -5,7 +5,7 @@
 //
 
 import { css, html, LitElement, nothing, type PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { customElement, property, query, state } from "lit/decorators.js";
 import { map } from "lit/directives/map.js";
 import { live } from "lit/directives/live.js";
 import cachedFetch from "./util-cached-fetch.ts";
@@ -53,11 +53,8 @@ const styles = css`
     text-underline-offset: 2px;
   }
 
-  .hide {
-    display: none !important;
-  }
-
   .display-name {
+    anchor-name: --omnitar-profile-trigger;
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -73,10 +70,13 @@ const styles = css`
   }
 
   .card {
-    position: absolute;
-    top: 75%;
-    left: 0;
-    margin-top: 8px;
+    /* Reset UA [popover] { position: fixed; inset: 0; margin: auto } */
+    position: fixed;
+    inset: unset;
+    margin: 0;
+    position-anchor: --omnitar-profile-trigger;
+    top: calc(anchor(bottom) + 8px);
+    left: anchor(left);
     display: grid;
     grid-template-columns: 48px minmax(140px, 1fr);
     align-items: start;
@@ -108,12 +108,14 @@ const styles = css`
     pointer-events: auto;
   }
 
-  /* override the generic .hide (display:none) so we can animate instead */
   .card.hide {
-    display: grid !important;
     opacity: 0;
     transform: translateY(-4px);
     pointer-events: none;
+  }
+
+  :host([visible]) .card {
+    transition: none;
   }
 
   /* little pointer/caret at the top of the card */
@@ -209,7 +211,7 @@ export class OmnitarProfileElement extends LitElement {
   @property({ converter: csvConverter })
   fields: Array<string> = [];
 
-  /** Force visibility of the profile card. If false, the card will only be visible on hover. */
+  /** When set, keeps the card open. When unset, the card opens on hover only. */
   @property({ type: Boolean, reflect: true })
   visible = false;
 
@@ -218,7 +220,24 @@ export class OmnitarProfileElement extends LitElement {
   profileData: Profile | null = null;
 
   /** @internal */
+  @state()
+  private _hoverOpen = false;
+
+  /** @internal */
   private _hoverIntent: ReturnType<typeof hoverintent> | null = null;
+
+  /** @internal */
+  @query(".display-name")
+  private trigger?: HTMLElement;
+
+  /** @internal */
+  @query(".card")
+  private card?: HTMLElement;
+
+  /** @internal */
+  private get _cardOpen(): boolean {
+    return this.visible || this._hoverOpen;
+  }
 
   /** @internal */
   private _fetch() {
@@ -267,6 +286,14 @@ export class OmnitarProfileElement extends LitElement {
     if (changed.has("profileData")) {
       this.toggleAttribute("has-data", !!this.profileData);
     }
+    if (
+      this.profileData &&
+      (changed.has("profileData") ||
+        changed.has("visible") ||
+        changed.has("_hoverOpen"))
+    ) {
+      this._syncCardOpen();
+    }
   }
 
   connectedCallback() {
@@ -276,18 +303,65 @@ export class OmnitarProfileElement extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    this._hide();
+    this._hoverOpen = false;
+    this._closeCard();
     this._hoverIntent?.remove();
   }
 
   /** @internal */
+  private static _anchorPositioningSupported =
+    typeof CSS !== "undefined" && CSS.supports("top", "anchor(bottom)");
+
+  /** @internal */
+  private _positionCard = () => {
+    if (OmnitarProfileElement._anchorPositioningSupported) {
+      return;
+    }
+    if (!this.card || !this.trigger) {
+      return;
+    }
+    const { bottom, left } = this.trigger.getBoundingClientRect();
+    this.card.style.top = `${bottom + 8}px`;
+    this.card.style.left = `${left}px`;
+  };
+
+  /** @internal */
+  private _syncCardOpen = () => {
+    if (!this.card || !this.profileData) {
+      return;
+    }
+    if (this._cardOpen) {
+      this._positionCard();
+      if (!this.card.matches(":popover-open")) {
+        this.card.showPopover();
+      }
+    } else {
+      this._closeCard();
+    }
+  };
+
+  /** @internal */
+  private _closeCard = () => {
+    if (!this.card?.matches(":popover-open")) {
+      return;
+    }
+    this.card.hidePopover();
+  };
+
+  /** @internal */
   private _show = () => {
-    this.visible = true;
+    if (this.visible) {
+      return;
+    }
+    this._hoverOpen = true;
   };
 
   /** @internal */
   private _hide = () => {
-    this.visible = false;
+    if (this.visible) {
+      return;
+    }
+    this._hoverOpen = false;
   };
 
   render() {
@@ -300,7 +374,7 @@ export class OmnitarProfileElement extends LitElement {
         <img class="icon" src=${live(svgSlack)} alt="Slack" />
         ${profile.name ? profile.name : html`<slot></slot>`}
       </span>
-      <div class="card ${this.visible ? "" : "hide"}">
+      <div class="card ${this._cardOpen ? "" : "hide"}" popover="manual">
         <div style="height: 100%">
           <img alt="profile photo" class="avatar" src="${profile.avatar_url}" />
         </div>
