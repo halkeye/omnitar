@@ -1,6 +1,5 @@
 spec:
   name: omnitar
-  disable_email_obfuscation: true
   region: tor1
   databases:
   - engine: PG
