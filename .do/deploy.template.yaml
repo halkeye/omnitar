@@ -1,5 +1,6 @@
 spec:
-  name: internal-profile-http
+  name: omnitar
+  disable_email_obfuscation: true
   region: tor1
   databases:
   - engine: PG
@@ -8,15 +9,15 @@ spec:
   ingress:
     rules:
     - component:
-        name: internal-profile-http
+        name: omnitar
       match:
         path:
           prefix: /
   services:
-    - name: internal-profile-http
+    - name: omnitar
       git:
         branch: main
-        repo_clone_url: https://github.com/halkeye/internal-profile-http
+        repo_clone_url: https://github.com/halkeye/omnitar
       dockerfile_path: /Dockerfile
       source_dir: /
       envs:
@@ -41,5 +42,3 @@ spec:
         http_path: /
       instance_count: 1
       instance_size_slug: apps-s-1vcpu-0.5gb
-      routes:
-        - path: /
