@@ -1,6 +1,3 @@
-// Command profile-http serves a Gravatar-compatible profile/avatar API and
-// hover-card web component backed by Slack workspaces
-// directory.
 package main
 
 import (

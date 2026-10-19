@@ -44,8 +44,8 @@ COPY ./static/* ./static/
 # -ldflags="-w -s" to strip debug info and reduce binary size
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
   -ldflags="-w -s" \
-  -o /build/profile-http \
-  ./cmd/profile-http
+  -o /build/server \
+  ./cmd/server
 
 # Final stage
 FROM alpine:latest
@@ -64,7 +64,7 @@ RUN addgroup -g 1000 appuser && \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/profile-http /app/profile-http
+COPY --from=builder /build/server /app/server
 
 # Copy static files if needed
 COPY --from=builder /build/static /app/static
@@ -79,4 +79,4 @@ USER appuser
 EXPOSE 8080
 
 # Run the application
-CMD ["/app/profile-http"]
+CMD ["/app/server"]

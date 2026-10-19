@@ -44,7 +44,7 @@ tasks:
       - "cmd/**/*.go"
       - "internal/**/*.go"
     cmds:
-      - go build -o ./tmp/main ./cmd/profile-http
+      - go build -o ./tmp/main ./cmd/server
       - ./tmp/main | humanlog --keep component
 
   air:
