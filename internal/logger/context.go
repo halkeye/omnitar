@@ -15,7 +15,7 @@ var DefaultLogger *logrus.Logger
 func init() {
 	DefaultLogger = logrus.New()
 	DefaultLogger.SetFormatter(&logrus.JSONFormatter{})
-	DefaultLogger.SetOutput(os.Stdout)
+	DefaultLogger.SetOutput(os.Stderr)
 }
 
 // Define the context key type.

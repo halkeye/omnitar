@@ -44,8 +44,8 @@ COPY ./static/* ./static/
 # -ldflags="-w -s" to strip debug info and reduce binary size
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
   -ldflags="-w -s" \
-  -o /build/server \
-  ./cmd/server
+  -o /build/omnitar \
+  ./cmd
 
 # Final stage
 FROM alpine:latest
@@ -64,10 +64,7 @@ RUN addgroup -g 1000 appuser && \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/server /app/server
-
-# Copy static files if needed
-COPY --from=builder /build/static /app/static
+COPY --from=builder /build/omnitar /app/omnitar
 
 # Change ownership
 RUN chown -R appuser:appuser /app
@@ -79,4 +76,4 @@ USER appuser
 EXPOSE 8080
 
 # Run the application
-CMD ["/app/server"]
+CMD ["/app/omnitar", "server"]

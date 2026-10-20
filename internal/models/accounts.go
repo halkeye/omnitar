@@ -12,7 +12,8 @@ import (
 type Account struct {
 	gorm.Model
 
-	ID uuid.UUID `gorm:"type:uuid;primary_key;"`
+	ID     uuid.UUID `gorm:"type:uuid;primary_key;"`
+	Tokens []*Token  `gorm:"foreignKey:AccountUUID;"`
 }
 
 func (a *Account) BeforeCreate(tx *gorm.DB) error {
