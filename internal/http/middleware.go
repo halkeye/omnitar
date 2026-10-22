@@ -50,6 +50,11 @@ func (router *Deps) noTransform() gin.HandlerFunc {
 }
 
 func (router *Deps) requestLogger() gin.HandlerFunc {
+	if !router.Config.ShouldLogRequests() {
+		return func(c *gin.Context) {
+			c.Next()
+		}
+	}
 	return func(c *gin.Context) {
 		started := time.Now()
 

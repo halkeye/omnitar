@@ -33,6 +33,7 @@ type config struct {
 	AtlassianClientSecret_ string   `env:"ATLASSIAN_CLIENT_SECRET"`
 	Port                   string   `env:"PORT,required" envDefault:"8080"`
 	LogLevel               string   `env:"LOG_LEVEL,required" envDefault:"info"`
+	LogRequests            bool     `env:"LOG_REQUESTS" envDefault:"false"`
 	SessionKey_            string   `env:"SESSION_KEY,required" envDefault:"omnitar-session-key"`
 	Database_              *gorm.DB `env:"DATABASE_URL" envDefault:"sqlite://./db.sqlite"`
 }
@@ -200,6 +201,8 @@ type Config interface {
 
 	SessionKey() string
 	Database() *gorm.DB
+
+	ShouldLogRequests() bool
 }
 
 func (c *config) IsDev() bool {
@@ -228,6 +231,10 @@ func (c *config) SessionKey() string {
 
 func (c *config) Database() *gorm.DB {
 	return c.Database_
+}
+
+func (c *config) ShouldLogRequests() bool {
+	return c.LogRequests
 }
 
 // Close closes the database connection, if
