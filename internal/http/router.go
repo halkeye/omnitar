@@ -7,6 +7,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-contrib/location/v2"
 	gormsessions "github.com/gin-contrib/sessions/gorm"
@@ -14,6 +15,9 @@ import (
 	"github.com/m4gshm/gollections/slice"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"golang.org/x/oauth2"
 
 	"github.com/halkeye/omnitar/internal/config"
 	"github.com/halkeye/omnitar/internal/database"
@@ -91,6 +95,7 @@ func New(opts ...RouterOptions) http.Handler {
 
 	store := gormsessions.NewStore(d.Config.Database(), true, []byte(d.Config.SessionKey()))
 	ginrouter := gin.New()
+	ginrouter.Use(otelgin.Middleware("api"))
 
 	providersObj := providers.New()
 	providersObj.Register(providers.Slack, models.SlackSourceOAuth2Config(d.Config.SlackClientID(), d.Config.SlackClientSecret()))
@@ -102,6 +107,16 @@ func New(opts ...RouterOptions) http.Handler {
 		ctx = database.WithValue(ctx, d.Config.Database())
 		ctx = context.WithValue(ctx, templates.IsDevKey, d.Config.IsDev())
 		ctx = providers.WithValue(ctx, providersObj)
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: otelhttp.NewTransport(
+				&http.Transport{
+					MaxIdleConns:        100,
+					MaxIdleConnsPerHost: 10,
+					IdleConnTimeout:     90 * time.Second,
+				},
+			),
+		})
 		// ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Transport: debugroundtripper.RoundTripper{}})
 		c.Request = c.Request.WithContext(ctx)
 	})

@@ -17,13 +17,24 @@ import (
 	"github.com/halkeye/omnitar/internal/config"
 	api "github.com/halkeye/omnitar/internal/http"
 	"github.com/halkeye/omnitar/internal/logger"
+	"github.com/halkeye/omnitar/internal/tracing"
 )
 
-func Run(ctx context.Context) {
+func Run(ctx context.Context) error {
 	cfg, err := config.Load()
 	if err != nil {
-		panic(fmt.Errorf("failed to load config: %w", err))
+		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	// Set up OpenTelemetry.
+	otelShutdown, err := tracing.SetupOTelSDK(ctx)
+	if err != nil {
+		return err
+	}
+	// Handle shutdown properly so nothing leaks.
+	defer func() {
+		err = errors.Join(err, otelShutdown(context.Background()))
+	}()
 
 	var staticHandler http.Handler
 	if cfg.IsDev() {
@@ -50,21 +61,28 @@ func Run(ctx context.Context) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	srvErr := make(chan error, 1)
 	go func() {
 		logger.DefaultLogger.WithField("port", cfg.Port).Info("listening")
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.DefaultLogger.WithError(err).Fatal("server failed")
-		}
+		srvErr <- srv.ListenAndServe()
 	}()
 
 	<-ctx.Done()
-	logger.DefaultLogger.Info("shutting down")
 
-	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancelShutdown()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.DefaultLogger.WithError(err).Error("graceful shutdown failed")
+	// Wait for interruption.
+	select {
+	case err = <-srvErr:
+		// Error when starting HTTP server.
+		return err
+	case <-ctx.Done():
+		// Wait for first CTRL+C.
+		// Stop receiving signal notifications as soon as possible.
+		stop()
 	}
+
+	// When Shutdown is called, ListenAndServe immediately returns ErrServerClosed.
+	err = srv.Shutdown(context.Background())
+	return err
 }
 
 func createViteProxy(target string) (http.Handler, error) {

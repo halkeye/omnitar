@@ -9,6 +9,9 @@ import (
 	"regexp"
 
 	"github.com/slack-go/slack"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/oauth2"
 
 	"github.com/halkeye/omnitar/internal/cachefetch"
@@ -121,6 +124,11 @@ type slackWrapperUser struct {
 }
 
 func (s *SlackSource) getUserIdByEmail(ctx context.Context, email string) (string, error) {
+	ctx, span := tracer.Start(ctx, "slack.getUserIdByEmail",
+		trace.WithAttributes(attribute.String("slack.email", email)),
+	)
+	defer span.End()
+
 	queryString := url.Values{"email": []string{email}}.Encode()
 	slackUser, err := cachefetch.Fetch[slackWrapperUser](ctx, s.token, "https://slack.com/api/users.lookupByEmail?"+queryString)
 	if err != nil {
@@ -133,11 +141,14 @@ func (s *SlackSource) getUserIdByEmail(ctx context.Context, email string) (strin
 				err = slackErr
 			}
 		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "unable to fetch user")
 		return "", fmt.Errorf("unable to fetch user: %w", err)
 	}
 	if slackUser.Ok == false {
 		return "", &NotFoundError{}
 	}
+	span.SetAttributes(attribute.String("slack.user_id", slackUser.User.ID))
 	return slackUser.User.ID, nil
 }
 

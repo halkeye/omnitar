@@ -22,6 +22,7 @@ import (
 	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/plugin/opentelemetry/tracing"
 )
 
 // config holds all runtime configuration for the service.
@@ -92,29 +93,28 @@ func parseDatabase(v string) (any, error) {
 		return nil, fmt.Errorf("failed to parse database URL: %w", err)
 	}
 
+	var dialector gorm.Dialector
 	switch parsedURL.Scheme {
 	case "postgres", "postgresql":
-		db, err := gorm.Open(postgres.New(postgres.Config{DSN: v, PreferSimpleProtocol: true}), &gorm.Config{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to connect to database: %w", err)
-		}
-		return *db, nil
+		dialector = postgres.New(postgres.Config{DSN: v, PreferSimpleProtocol: true})
 	case "sqlite", "sqlite3":
 		// remove the sqlite, then the ://
 		dsn := v[len(parsedURL.Scheme)+3:]
-		db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to connect to database: %w", err)
-		}
-		return *db, nil
+		dialector = sqlite.Open(dsn)
 	case "mysql", "mariadb":
-		db, err := gorm.Open(gormmysql.Open(mysqlDSN(parsedURL)), &gorm.Config{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to connect to database: %w", err)
-		}
-		return *db, nil
+		dialector = gormmysql.Open(mysqlDSN(parsedURL))
+	default:
+		return nil, errors.New("unknown type")
 	}
-	return nil, errors.New("unknown type")
+	db, err := gorm.Open(dialector, &gorm.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	if err := db.Use(tracing.NewPlugin()); err != nil {
+		return nil, fmt.Errorf("unable to initialize tracing plugin")
+	}
+	return *db, nil
 }
 
 // mysqlDSN converts a URL (mysql://user:pass@host:port/dbname?parseTime=true)

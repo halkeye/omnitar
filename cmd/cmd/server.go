@@ -9,8 +9,8 @@ import (
 var serverCmd = &cobra.Command{
 	Use:   "server",
 	Short: "Runs the http server",
-	Run: func(cmd *cobra.Command, _ []string) {
-		server.Run(cmd.Context())
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return server.Run(cmd.Context())
 	},
 }
 

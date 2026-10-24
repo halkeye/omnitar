@@ -15,6 +15,12 @@ import (
 )
 
 func (router *Deps) cors(c *gin.Context) {
+	// delete cors headers incase they are already set
+	c.Header("Access-Control-Allow-Origin", "")
+	c.Header("Access-Control-Allow-Methods", "")
+	c.Header("Access-Control-Allow-Headers", "")
+
+	// then explicitly handle them
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
 	c.Header("Access-Control-Allow-Headers", "Content-Type")
