@@ -3,6 +3,7 @@ package tracing
 import (
 	"context"
 	"errors"
+	"runtime/debug"
 
 	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/otel"
@@ -10,7 +11,9 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
 
 // SetupOTelSDK bootstraps the OpenTelemetry pipeline.
@@ -43,6 +46,20 @@ func SetupOTelSDK(ctx context.Context) (func(context.Context) error, error) {
 		return shutdown, err
 	}
 
+	info, _ := debug.ReadBuildInfo()
+	res, err := resource.Merge(
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceName("omnitar"),
+			semconv.ServiceVersion(info.Main.Version),
+		),
+		resource.Default(), // OTEL_SERVICE_NAME / OTEL_RESOURCE_ATTRIBUTES override
+	)
+	if err != nil {
+		handleErr(err)
+		return shutdown, err
+	}
+
 	// Set up propagator.
 	prop := newPropagator()
 	otel.SetTextMapPropagator(prop)
@@ -50,6 +67,7 @@ func SetupOTelSDK(ctx context.Context) (func(context.Context) error, error) {
 	// Set up trace provider.
 	tracerProvider := trace.NewTracerProvider(
 		trace.WithBatcher(spanExporter),
+		trace.WithResource(res),
 	)
 	if err != nil {
 		handleErr(err)
@@ -67,6 +85,7 @@ func SetupOTelSDK(ctx context.Context) (func(context.Context) error, error) {
 	// Create meter provider with the reader
 	meterProvider := metric.NewMeterProvider(
 		metric.WithReader(metricReader),
+		metric.WithResource(res),
 	)
 	shutdownFuncs = append(shutdownFuncs, meterProvider.Shutdown)
 	otel.SetMeterProvider(meterProvider)
