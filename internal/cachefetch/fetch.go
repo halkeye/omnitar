@@ -95,7 +95,7 @@ func Fetch[T any](ctx context.Context, token TokenUpdater, url string) (T, error
 
 		err = cacheManager.Set(ctx, url, body, store.WithExpiration(time.Hour))
 		if err != nil {
-			logger.FromContext(ctx).WithField("url", url).WithField("size", len(cacheVal)).WithError(err).Error("cache set")
+			logger.FromContext(ctx).ErrorContext(ctx, "cache set", "url", url, "size", len(cacheVal), "error", err)
 		}
 
 		return body, nil

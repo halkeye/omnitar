@@ -17,8 +17,6 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/glebarez/sqlite"
 	gomysql "github.com/go-sql-driver/mysql"
-	"github.com/sirupsen/logrus"
-
 	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -41,14 +39,14 @@ type config struct {
 
 func (c *config) SetupDB(ctx context.Context) error {
 	var err error
-	ll := logger.FromContext(ctx)
-	ll.Debug("connecting to database")
+	log := logger.FromContext(ctx)
+	log.DebugContext(ctx, "connecting to database")
 	// Migrate the schema
 	err = c.Database_.AutoMigrate(&models.Account{}, &models.Token{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate schema: %w", err)
 	}
-	ll.Debug("migration done")
+	log.DebugContext(ctx, "migration done")
 
 	accounts, err := gorm.G[models.Account](c.Database_).Find(ctx)
 	if err != nil {
@@ -164,14 +162,14 @@ func Load() (*config, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	if level, err := logrus.ParseLevel(cfg.LogLevel); err != nil {
-		logger.DefaultLogger.WithError(err).Warn("invalid LOG_LEVEL, defaulting to info")
+	if level, err := logger.ParseLevel(cfg.LogLevel); err != nil {
+		logger.Default.WarnContext(context.Background(), "invalid LOG_LEVEL, defaulting to info", "error", err)
 	} else {
-		logger.DefaultLogger.SetLevel(level)
+		logger.SetLevel(level)
 	}
 
 	if cfg.Database_ != nil {
-		// cfg.Database_.Logger = gormlogrus{
+		// cfg.Database_.Logger = gormslog{
 		// 	logger:                cfg.logger,
 		// 	SourceField:           "source",
 		// 	SkipErrRecordNotFound: true,

@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/halkeye/omnitar/internal/database"
-	"github.com/halkeye/omnitar/internal/logger"
 	"github.com/halkeye/omnitar/internal/providers"
 )
 
@@ -96,14 +95,14 @@ func (t *Token) IssueSource(ctx context.Context) IssueSource {
 	}
 }
 
-func (t *Token) AsLog() logger.Fields {
-	return logger.Fields{
-		"token.id":            t.ID,
-		"token.account_uuid":  t.AccountUUID,
-		"token.origin":        t.Origin,
-		"token.origin_id":     t.OriginID,
-		"token.expires_at":    t.ExpiresAt,
-		"token.refresh_token": t.RefreshToken,
+func (t *Token) LogAttrs() []any {
+	return []any{
+		"token.id", t.ID,
+		"token.account_uuid", t.AccountUUID,
+		"token.origin", t.Origin,
+		"token.origin_id", t.OriginID,
+		"token.expires_at", t.ExpiresAt,
+		"token.refresh_token", t.RefreshToken,
 	}
 }
 

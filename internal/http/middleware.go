@@ -70,27 +70,28 @@ func (router *Deps) requestLogger() gin.HandlerFunc {
 			return
 		}
 
-		ll := logger.FromContext(c.Request.Context()).WithFields(logger.Fields{
-			"client_ip": c.ClientIP(),
-			"latency":   time.Since(started).String(),
-			"method":    c.Request.Method,
-			"path":      c.Request.URL.Path,
-			"status":    c.Writer.Status(),
-		})
+		ctx := c.Request.Context()
+		attrs := []any{
+			"client_ip", c.ClientIP(),
+			"latency", time.Since(started).String(),
+			"method", c.Request.Method,
+			"path", c.Request.URL.Path,
+			"status", c.Writer.Status(),
+		}
 		if len(c.Errors) != 0 {
 			for _, e := range c.Errors {
-				ll.WithError(e).Error("request error")
+				logger.FromContext(ctx).ErrorContext(ctx, "request error", append(attrs, "error", e)...)
 			}
 		} else {
-			ll.Info("request complete")
+			logger.FromContext(ctx).InfoContext(ctx, "request complete", attrs...)
 		}
 	}
 }
 
 func (router *Deps) recovery() gin.HandlerFunc {
-	return gin.CustomRecoveryWithWriter(router.Logger.Writer(), func(c *gin.Context, err any) {
+	return gin.CustomRecoveryWithWriter(logger.Writer(router.Logger), func(c *gin.Context, err any) {
 		if router.Logger != nil {
-			router.Logger.WithField("error", err).Error("recovered from panic")
+			router.Logger.ErrorContext(c.Request.Context(), "recovered from panic", "error", err)
 		}
 		c.AbortWithStatus(http.StatusInternalServerError)
 	})
@@ -104,7 +105,7 @@ func (router *Deps) errorHandler() gin.HandlerFunc {
 		if len(c.Errors) > 0 {
 			err := c.Errors.Last().Err
 
-			router.Logger.WithError(err).Error("http error")
+			router.Logger.ErrorContext(c.Request.Context(), "http error", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"success": false,
 				"message": err.Error(),
@@ -122,7 +123,7 @@ func (router *Deps) middlewareSessionUser(c *gin.Context) {
 		session.AddFlash("You must log in to view this page.")
 		err := session.Save()
 		if err != nil {
-			router.Logger.WithError(err).Error("Failed to save session")
+			router.Logger.ErrorContext(c.Request.Context(), "Failed to save session", "error", err)
 		}
 
 		c.Redirect(http.StatusFound, "/")

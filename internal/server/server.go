@@ -40,17 +40,19 @@ func Run(ctx context.Context) error {
 	if cfg.IsDev() {
 		staticHandler, err = createViteProxy("http://localhost:5173")
 		if err != nil {
-			logger.DefaultLogger.WithError(err).Fatal("failed to create Vite proxy")
+			logger.Default.Error("failed to create Vite proxy", "error", err)
+			os.Exit(1)
 		}
 	} else {
 		serverRoot, err := fs.Sub(root.StaticFiles, "static")
 		if err != nil {
-			logger.DefaultLogger.WithError(err).Fatal("chdir to static")
+			logger.Default.Error("chdir to static", "error", err)
+			os.Exit(1)
 		}
 		staticHandler = http.FileServerFS(serverRoot)
 	}
 
-	router := api.New(api.WithLogger(logger.DefaultLogger), api.WithConfig(cfg), api.WithStaticHandler(staticHandler))
+	router := api.New(api.WithLogger(logger.Default), api.WithConfig(cfg), api.WithStaticHandler(staticHandler))
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -63,7 +65,7 @@ func Run(ctx context.Context) error {
 
 	srvErr := make(chan error, 1)
 	go func() {
-		logger.DefaultLogger.WithField("port", cfg.Port).Info("listening")
+		logger.Default.Info("listening", "port", cfg.Port)
 		srvErr <- srv.ListenAndServe()
 	}()
 

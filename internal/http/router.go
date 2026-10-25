@@ -6,6 +6,8 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -14,7 +16,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/m4gshm/gollections/slice"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/oauth2"
@@ -31,7 +32,7 @@ import (
 
 // Deps are the dependencies NewRouter needs to build the full route table.
 type Deps struct {
-	Logger *logrus.Logger
+	Logger *slog.Logger
 	// defaultAvatar is served in place of an unknown/missing avatar.
 	defaultAvatar []byte
 	StaticHandler http.Handler
@@ -44,9 +45,9 @@ type Deps struct {
 
 type RouterOptions func(r *Deps)
 
-func WithLogger(logger *logrus.Logger) RouterOptions {
+func WithLogger(l *slog.Logger) RouterOptions {
 	return func(r *Deps) {
-		r.Logger = logger
+		r.Logger = l
 	}
 }
 
@@ -82,14 +83,16 @@ func New(opts ...RouterOptions) http.Handler {
 	}
 
 	if d.Logger != nil {
-		gin.DebugPrintFunc = d.Logger.Debugf
+		gin.DebugPrintFunc = func(format string, values ...any) {
+			d.Logger.Debug(fmt.Sprintf(format, values...))
+		}
 		gin.DebugPrintRouteFunc = func(method, path, handler string, handlers int) {
-			d.Logger.WithFields(logrus.Fields{
-				"handler":  handler,
-				"handlers": handlers,
-				"method":   method,
-				"path":     path,
-			}).Debug("route registered")
+			d.Logger.Debug("route registered",
+				"handler", handler,
+				"handlers", handlers,
+				"method", method,
+				"path", path,
+			)
 		}
 	}
 
@@ -103,7 +106,7 @@ func New(opts ...RouterOptions) http.Handler {
 
 	ginrouter.Use(func(c *gin.Context) {
 		ctx := c.Request.Context()
-		ctx = logger.WithValue(ctx, logrus.NewEntry(d.Logger))
+		ctx = logger.With(ctx, d.Logger)
 		ctx = database.WithValue(ctx, d.Config.Database())
 		ctx = context.WithValue(ctx, templates.IsDevKey, d.Config.IsDev())
 		ctx = providers.WithValue(ctx, providersObj)

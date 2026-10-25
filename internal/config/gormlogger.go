@@ -3,6 +3,8 @@ package config
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/halkeye/omnitar/internal/logger"
@@ -12,52 +14,48 @@ import (
 	"gorm.io/gorm/utils"
 )
 
-type gormlogrus struct {
+type gormslog struct {
 	SlowThreshold         time.Duration
 	SourceField           string
 	SkipErrRecordNotFound bool
 }
 
-var _ gormiologger.Interface = gormlogrus{}
+var _ gormiologger.Interface = gormslog{}
 
-// Error implements [logger.Interface].
-func (g gormlogrus) Error(ctx context.Context, s string, args ...interface{}) {
-	logger.FromContext(ctx).WithContext(ctx).WithField("component", "gormlogrus").Errorf(s, args...)
+func (g gormslog) Error(ctx context.Context, s string, args ...interface{}) {
+	logger.FromContext(ctx).ErrorContext(ctx, fmt.Sprintf(s, args...), "component", "gormslog")
 }
 
-// Info implements [logger.Interface].
-func (g gormlogrus) Info(ctx context.Context, s string, args ...interface{}) {
-	logger.FromContext(ctx).WithContext(ctx).WithField("component", "gormlogrus").Infof(s, args...)
+func (g gormslog) Info(ctx context.Context, s string, args ...interface{}) {
+	logger.FromContext(ctx).InfoContext(ctx, fmt.Sprintf(s, args...), "component", "gormslog")
 }
 
-// LogMode implements [logger.Interface].
-func (g gormlogrus) LogMode(gormiologger.LogLevel) gormiologger.Interface {
-	// noop for now
+func (g gormslog) LogMode(gormiologger.LogLevel) gormiologger.Interface {
 	return g
 }
 
-// Warn implements [logger.Interface].
-func (g gormlogrus) Warn(ctx context.Context, s string, args ...interface{}) {
-	logger.FromContext(ctx).WithContext(ctx).WithField("component", "gormlogrus").Warnf(s, args...)
+func (g gormslog) Warn(ctx context.Context, s string, args ...interface{}) {
+	logger.FromContext(ctx).WarnContext(ctx, fmt.Sprintf(s, args...), "component", "gormslog")
 }
 
-// Trace implements [logger.Interface].
-func (g gormlogrus) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+func (g gormslog) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
 	elapsed := time.Since(begin)
 	sql, _ := fc()
-	fields := logger.Fields{"component": "gorm"}
+	attrs := []any{"component", "gorm"}
 	if g.SourceField != "" {
-		fields[g.SourceField] = utils.FileWithLineNum()
+		attrs = append(attrs, g.SourceField, utils.FileWithLineNum())
 	}
+	msg := fmt.Sprintf("%s [%s]", sql, elapsed)
+
 	if err != nil && !(errors.Is(err, gorm.ErrRecordNotFound) && g.SkipErrRecordNotFound) {
-		logger.FromContext(ctx).WithError(err).WithFields(fields).Errorf("%s [%s]", sql, elapsed)
+		logger.FromContext(ctx).ErrorContext(ctx, msg, append(attrs, "error", err)...)
 		return
 	}
 
 	if g.SlowThreshold != 0 && elapsed > g.SlowThreshold {
-		logger.FromContext(ctx).WithFields(fields).Warnf("%s [%s]", sql, elapsed)
+		logger.FromContext(ctx).WarnContext(ctx, msg, attrs...)
 		return
 	}
 
-	logger.FromContext(ctx).WithFields(fields).Debugf("%s [%s]", sql, elapsed)
+	logger.FromContext(ctx).Log(ctx, slog.LevelDebug, msg, attrs...)
 }

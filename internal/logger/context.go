@@ -2,35 +2,20 @@ package logger
 
 import (
 	"context"
-	"os"
-
-	"github.com/sirupsen/logrus"
+	"log/slog"
 )
 
-type Logger = *logrus.Entry
-type Fields = logrus.Fields
+type contextKey struct{}
 
-var DefaultLogger *logrus.Logger
-
-func init() {
-	DefaultLogger = logrus.New()
-	DefaultLogger.SetFormatter(&logrus.JSONFormatter{})
-	DefaultLogger.SetOutput(os.Stderr)
+// With stores l in ctx for FromContext.
+func With(ctx context.Context, l *slog.Logger) context.Context {
+	return context.WithValue(ctx, contextKey{}, l)
 }
 
-// Define the context key type.
-type contextKey string
-
-var loggerKey contextKey = "logger"
-
-func WithValue(ctx context.Context, logger Logger) context.Context {
-	return context.WithValue(ctx, loggerKey, logger)
-}
-
-func FromContext(ctx context.Context) Logger {
-	val, ok := ctx.Value(loggerKey).(Logger)
-	if !ok {
-		val = logrus.NewEntry(DefaultLogger).WithField("unknown_context", "unknown_context")
+// FromContext returns the request logger from ctx, or Default with unknown_context set.
+func FromContext(ctx context.Context) *slog.Logger {
+	if l, ok := ctx.Value(contextKey{}).(*slog.Logger); ok && l != nil {
+		return l
 	}
-	return val.WithContext(ctx)
+	return Default.With("unknown_context", true)
 }

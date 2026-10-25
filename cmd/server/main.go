@@ -31,17 +31,19 @@ func main() {
 	if cfg.IsDev() {
 		staticHandler, err = createViteProxy("http://localhost:5173")
 		if err != nil {
-			logger.DefaultLogger.WithError(err).Fatal("failed to create Vite proxy")
+			logger.Default.Error("failed to create Vite proxy", "error", err)
+			os.Exit(1)
 		}
 	} else {
 		serverRoot, err := fs.Sub(root.StaticFiles, "static")
 		if err != nil {
-			logger.DefaultLogger.WithError(err).Fatal("chdir to static")
+			logger.Default.Error("chdir to static", "error", err)
+			os.Exit(1)
 		}
 		staticHandler = http.FileServerFS(serverRoot)
 	}
 
-	router := api.New(api.WithLogger(logger.DefaultLogger), api.WithConfig(cfg), api.WithStaticHandler(staticHandler))
+	router := api.New(api.WithLogger(logger.Default), api.WithConfig(cfg), api.WithStaticHandler(staticHandler))
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -53,19 +55,20 @@ func main() {
 	}
 
 	go func() {
-		logger.DefaultLogger.WithField("port", cfg.Port).Info("listening")
+		logger.Default.Info("listening", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.DefaultLogger.WithError(err).Fatal("server failed")
+			logger.Default.Error("server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	<-ctx.Done()
-	logger.DefaultLogger.Info("shutting down")
+	logger.Default.Info("shutting down")
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.DefaultLogger.WithError(err).Error("graceful shutdown failed")
+		logger.Default.Error("graceful shutdown failed", "error", err)
 	}
 }
 

@@ -11,7 +11,8 @@ import (
 type RoundTripper struct{}
 
 func (t RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	ll := logger.FromContext(req.Context())
+	log := logger.FromContext(req.Context())
+	ctx := req.Context()
 
 	var err error
 	var reqBody []byte
@@ -24,15 +25,15 @@ func (t RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		req.Body = io.NopCloser(bytes.NewReader(reqBody))
 	}
-	ll.WithFields(logger.Fields{
-		"req.method":        req.Method,
-		"req.body":          string(reqBody),
-		"req.url":           req.URL.String(),
-		"req.header":        req.Header,
-		"req.form":          req.Form,
-		"req.postform":      req.PostForm,
-		"req.multipartform": req.MultipartForm,
-	}).Debug("Making request")
+	log.DebugContext(ctx, "Making request",
+		"req.method", req.Method,
+		"req.body", string(reqBody),
+		"req.url", req.URL.String(),
+		"req.header", req.Header,
+		"req.form", req.Form,
+		"req.postform", req.PostForm,
+		"req.multipartform", req.MultipartForm,
+	)
 	resp, err := http.DefaultTransport.RoundTrip(req)
 	if err != nil {
 		return resp, err
@@ -44,7 +45,7 @@ func (t RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 	}
-	ll.WithField("resp.status", resp.Status).WithField("resp.body", string(respBody)).Debug("got response")
+	log.DebugContext(ctx, "got response", "resp.status", resp.Status, "resp.body", string(respBody))
 
 	return resp, err
 }

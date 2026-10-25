@@ -36,7 +36,7 @@ func (router *Deps) healthzHandler(c *gin.Context) {
 // bundled default silhouette).
 func (router *Deps) avatarHandler(c *gin.Context) {
 	ctx := c.Request.Context()
-	ll := logger.FromContext(ctx)
+	log := logger.FromContext(ctx)
 
 	account := getTyped[models.Account](c, "account")
 	token, err := account.GetTokenByOrigin(ctx, database.FromContext(ctx), c.Param("source"), "slack")
@@ -45,14 +45,14 @@ func (router *Deps) avatarHandler(c *gin.Context) {
 		return
 	}
 	if token == nil {
-		ll.WithField("accountId", account.ID).Debug("no slack token for account")
+		log.DebugContext(ctx, "no slack token for account", "accountId", account.ID)
 		c.Status(http.StatusNotFound)
 		return
 	}
 
 	source := token.PersonSource(ctx)
 	if source == nil {
-		ll.WithFields(token.AsLog()).Debug("unknown Slack org ID")
+		log.DebugContext(ctx, "unknown Slack org ID", token.LogAttrs()...)
 		c.Status(http.StatusNotFound)
 		return
 	}
@@ -123,7 +123,7 @@ func (router *Deps) webcomponentHandler(c *gin.Context) {
 
 func (router *Deps) profileHandler(c *gin.Context) {
 	ctx := c.Request.Context()
-	ll := logger.FromContext(ctx)
+	log := logger.FromContext(ctx)
 
 	account := getTyped[models.Account](c, "account")
 	token, err := account.GetTokenByOrigin(ctx, database.FromContext(ctx), c.Param("source"), "slack")
@@ -132,34 +132,34 @@ func (router *Deps) profileHandler(c *gin.Context) {
 		return
 	}
 	if token == nil {
-		ll.WithField("accountId", account.ID).Debug("no slack token for account")
+		log.DebugContext(ctx, "no slack token for account", "accountId", account.ID)
 		c.Status(http.StatusNotFound)
 		return
 	}
 
 	source := token.PersonSource(ctx)
 	if source == nil {
-		ll.WithFields(token.AsLog()).Debug("unknown Slack org ID")
+		log.DebugContext(ctx, "unknown Slack org ID", token.LogAttrs()...)
 		c.Status(http.StatusNotFound)
 		return
 	}
 
-	ll = ll.WithFields(token.AsLog())
+	log = log.With(token.LogAttrs()...)
 
 	email := c.Param("email")
 	email = strings.TrimSpace(email)
 	email = strings.ToLower(email)
 
-	ll = ll.WithField("email", email)
+	log = log.With("email", email)
 	p, err := source.LookupPerson(c.Request.Context(), email)
 	if err != nil && !errors.Is(err, &models.NotFoundError{}) {
-		ll.Debug("error fetching profile")
+		log.DebugContext(ctx, "error fetching profile")
 		c.Error(err)
 		return
 	}
 
 	if errors.Is(err, &models.NotFoundError{}) {
-		ll.Debug("profile not found")
+		log.DebugContext(ctx, "profile not found")
 		c.Status(http.StatusNotFound)
 		return
 	}
@@ -169,7 +169,7 @@ func (router *Deps) profileHandler(c *gin.Context) {
 
 func (router *Deps) issueHandler(c *gin.Context) {
 	ctx := c.Request.Context()
-	ll := logger.FromContext(ctx)
+	log := logger.FromContext(ctx)
 	account := getTyped[models.Account](c, "account")
 
 	token, err := account.GetTokenByOrigin(ctx, database.FromContext(ctx), c.Param("source"), "atlassian")
@@ -179,32 +179,32 @@ func (router *Deps) issueHandler(c *gin.Context) {
 	}
 
 	if token == nil {
-		ll.WithField("accountId", account.ID).Debug("no slack token for account")
+		log.DebugContext(ctx, "no slack token for account", "accountId", account.ID)
 		c.Status(http.StatusNotFound)
 		return
 	}
 
 	source := token.IssueSource(ctx)
 	if source == nil {
-		ll.WithFields(token.AsLog()).Debug("unknown issue ID")
+		log.DebugContext(ctx, "unknown issue ID", token.LogAttrs()...)
 		c.Status(http.StatusNotFound)
 		return
 	}
 
-	ll = ll.WithFields(token.AsLog())
+	log = log.With(token.LogAttrs()...)
 
 	id := c.Param("id")
 
-	ll = ll.WithField("id", id)
+	log = log.With("id", id)
 	p, err := source.LookupIssue(ctx, id)
 	if err != nil {
-		ll.Debug("error fetching profile")
+		log.DebugContext(ctx, "error fetching profile")
 		c.Error(err)
 		return
 	}
 
 	if p == nil {
-		ll.Debug("profile not found")
+		log.DebugContext(ctx, "profile not found")
 		c.Status(http.StatusNotFound)
 		return
 	}
@@ -214,7 +214,7 @@ func (router *Deps) issueHandler(c *gin.Context) {
 
 func (router *Deps) deleteTokenHandler(c *gin.Context) {
 	ctx := c.Request.Context()
-	ll := logger.FromContext(ctx)
+	log := logger.FromContext(ctx)
 
 	session := sessions.Default(c)
 
@@ -222,7 +222,7 @@ func (router *Deps) deleteTokenHandler(c *gin.Context) {
 
 	tokenID := c.Param("token")
 	if tokenID == "" {
-		ll.Debug("No token ID provided")
+		log.DebugContext(ctx, "No token ID provided")
 		c.Status(http.StatusNotFound)
 		return
 	}
@@ -278,7 +278,7 @@ func (router *Deps) handlerProvider(c *gin.Context) {
 
 func (router *Deps) handlerProviderCallback(c *gin.Context) {
 	ctx := c.Request.Context()
-	ll := logger.FromContext(ctx)
+	log := logger.FromContext(ctx)
 	session := sessions.Default(c)
 
 	oauth2Config := providers.FromContext(ctx).Get(providers.OAuthProvider(c.Param("provider")))
@@ -294,7 +294,7 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 	// Retrieve and verify state
 	state := c.Query("state")
 	stateVal := sessions.Get[string](session, "state_"+state)
-	ll.WithField("state", stateVal).Debug("OAuth callback received")
+	log.DebugContext(ctx, "OAuth callback received", "state", stateVal)
 	if stateVal == "" {
 		c.AbortWithError(http.StatusBadRequest, errors.New("invalid state value"))
 		return
@@ -321,16 +321,16 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 	case providers.Slack:
 		for _, field := range []string{"enterprise", "team"} {
 			extra, ok := token.Extra(field).(map[string]any)
-			ll.WithField("field", field).WithField("extra", extra).Debug("Retrieved extra field from token")
+			log.DebugContext(ctx, "Retrieved extra field from token", "field", field, "extra", extra)
 			if !ok {
-				ll.WithField("field", field).Debug("Extra field is not a map[string]any")
+				log.DebugContext(ctx, "Extra field is not a map[string]any", "field", field)
 				continue
 			}
 
 			originID, ok := extra["id"].(string)
-			ll.WithField("field", field).WithField("originID", originID).Debug("Retrieved origin ID from extra field")
+			log.DebugContext(ctx, "Retrieved origin ID from extra field", "field", field, "originID", originID)
 			if !ok {
-				ll.WithField("field", field).Debug("Origin ID is not a string")
+				log.DebugContext(ctx, "Origin ID is not a string", "field", field)
 				continue
 			}
 
@@ -420,6 +420,6 @@ func (router *Deps) handlerProviderCallback(c *gin.Context) {
 	sessions.Set(session, "account_id", dbAccount.ID.String())
 	sessions.MustSave(session)
 
-	ll.WithField("account_id", dbAccount.ID).Debug("Saved account ID in session")
+	log.DebugContext(ctx, "Saved account ID in session", "account_id", dbAccount.ID)
 	c.Redirect(http.StatusFound, "/account/my")
 }
